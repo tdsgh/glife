@@ -63,7 +63,9 @@ Working with patterns rather than single cells.
   spaceships, guns), placed by clicking. Select a region; copy, cut, paste,
   rotate and flip it. Undo and redo for edits. Save and open universes. Import
   and export RLE, the text format the Life community uses to share patterns,
-  including pasting RLE from the clipboard.
+  including pasting RLE from the clipboard. Colouring cells by an attribute,
+  starting with age: how many generations a live cell has survived, with an
+  optional fading trail after death.
 - **Out.** Online pattern catalogues; pattern search and analysis.
 
 ### Phase 3 — Non-square tilings
