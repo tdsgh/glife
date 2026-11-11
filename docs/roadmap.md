@@ -20,7 +20,7 @@ saved at each step of the way.
 
 | # | Phase | Status | Phase document |
 |---|---|---|---|
-| 1 | Classic Life | Planned | — |
+| 1 | Classic Life | In progress | [glife-phase-1.md](glife-phase-1.md) |
 | 2 | Patterns | Planned | — |
 | 3 | Non-square tilings | Planned | — |
 | 4 | Closed surfaces | Planned | — |
