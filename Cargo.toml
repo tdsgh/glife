@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["src/engine", "src-tauri"]
+
+[profile.dev.package.glife-engine]
+opt-level = 3

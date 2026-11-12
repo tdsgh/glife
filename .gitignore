@@ -430,3 +430,8 @@ FodyWeavers.xsd
 # Claude Code project config (re-included over the global .claude ignore)
 !.claude/
 .claude/settings.local.json
+
+# Build outputs
+target/
+dist/
+src-tauri/gen/
