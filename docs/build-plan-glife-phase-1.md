@@ -44,7 +44,8 @@ transfer of the cells in view, React with TypeScript, three.js on WebGL.
   with a minimum shade for any live cell.
 - **Commands from the UI** are ordinary JSON `invoke` calls: `new_universe`,
   `play`, `pause`, `step`, `set_speed`, `set_edges`, `edit`, `clear`,
-  `random_fill`. Only `frame` returns raw bytes.
+  `random_fill`. Only `frame` returns raw bytes. `random_fill` takes an
+  optional density percent, 1–99, default 25.
 - **Randomness.** The backend draws a seed from the OS; the engine fills from
   that seed with SplitMix64, so the engine stays pure and deterministic.
 - **Shortcuts.** Enter: play/pause. N: step. R: random fill. Backspace/Delete:

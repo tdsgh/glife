@@ -19,8 +19,8 @@ names.
 |---|---|
 | Docs dir | `docs/` |
 | Build plans | `docs/build-plan-*.md` |
-| Test command | TODO(kit): the command that runs every test suite, once the stack is chosen |
-| Subtrees | none yet |
+| Test command | `cargo test --workspace && npm test` |
+| Subtrees | none |
 
 ## Non-negotiable rules
 
@@ -34,8 +34,7 @@ Rules here apply repo-wide. Where a subtree or an ADR owns the details, point at
 it instead of restating them — `→ ADR-0NN` refers to
 [docs/adr.md](docs/adr.md).
 
-- TODO(kit): the repo-wide rules. Tag the ones no subtree may override
-  *(non-negotiable)*.
+- Change `src/ui/backend.ts` and `src-tauri/src/commands.rs` together.
 
 ## Command index
 
@@ -44,15 +43,16 @@ it instead of restating them — `→ ADR-0NN` refers to
 | Understand the system as a whole | [docs/architecture.md](docs/architecture.md) |
 | Check what's already been decided | [docs/adr.md](docs/adr.md) |
 | See what's planned and in what order | [docs/roadmap.md](docs/roadmap.md) |
-| TODO(kit): one row per task | the README that owns it |
+| Run the app in development | `npm run tauri dev` ([package.json:10](package.json)) |
+| Build the release binary | `npm run tauri build -- --no-bundle`; output `target/release/glife-app` |
+| Run the release binary on the benchmark universe | `GLIFE_BENCH=1 target/release/glife-app` ([src-tauri/src/main.rs:10](src-tauri/src/main.rs)) |
+| Time the engine on a 2048 × 2048 grid | `cargo test --release -p glife-engine -- --ignored --nocapture timing` ([src/engine/src/tests.rs:345](src/engine/src/tests.rs)) |
 
 ## Execution guardrails
 
 Ask before:
 
-- TODO(kit): every command that touches shared or real infrastructure —
-  deploys, `docker push`, `terraform apply`, migrations against a live
-  database, `git push`.
+- `git push`.
 - Touching anything matching the repo's secret-shaped gitignore patterns.
 
 <!-- wscontext:begin -->

@@ -147,7 +147,8 @@ A square 2D universe with no edges.
 ## Risks and known costs
 
 - **Transfer speed on Windows.** Moving cells from the engine to the UI may be
-  slower in the Windows webview than on macOS and Linux. Not yet measured.
+  slower in the Windows webview than on macOS and Linux. Verified on macOS; not
+  yet measured on Windows or Linux.
 - **Large grids on screen.** A zoomed-out view of millions of cells needs a
   different way of drawing than a zoomed-in view of individual cells.
 - **Irregular cells on closed surfaces.** Cells with an unusual number of
