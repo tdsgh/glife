@@ -199,8 +199,8 @@ region origin and size, grid size, view transform, pixels per cell, colours.
 - Runs the animation-frame loop: request a frame unless one is in flight,
   upload a changed region into the `R32UI` `DataTexture` (reallocating only
   when its size changes), and render every frame.
-- Handles zoom and pan input: a wheel event with `ctrlKey` (trackpad pinch) or
-  a line-mode mouse wheel zooms; any other wheel event pans. Right or middle
+- Handles zoom and pan input: a wheel event with `ctrlKey` (trackpad pinch)
+  zooms; any other wheel event pans. Right or middle
   drag pans, and so does Space with a left drag.
 - Shows a hidden perf overlay toggled with the backquote key: fps, frame
   request time in ms, bytes per frame, gen/s.

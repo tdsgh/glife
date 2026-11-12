@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { fetchFrame, NO_VERSION, type Region } from "../backend";
+import { edit, fetchFrame, NO_VERSION, type Region } from "../backend";
 import { onFit, setHeader } from "../state";
 import { decodeFrame, type FrameHeader } from "../frame";
 import { fragmentShader, vertexShader } from "./gridShader";
-import { fit, panBy, resize, visibleRegion, zoomAt, type Viewport } from "./viewport";
+import { startStroke, strokeMode, type Cell } from "../edit/stroke";
+import { fit, panBy, resize, screenToCell, visibleRegion, zoomAt, type Viewport } from "./viewport";
 
 const PROBE: Region = { x0: 0, y0: 0, w: 32, h: 1 };
 
@@ -66,6 +67,7 @@ export function GridView() {
     let showOverlay = false;
 
     let header: FrameHeader | null = null;
+    let lastAlive: Uint32Array | null = null;
     let reqMs = 0;
     let frameBytes = 0;
     let frames = 0;
@@ -111,6 +113,7 @@ export function GridView() {
               texture.image.data = frame.alive;
             }
             texture.needsUpdate = true;
+            lastAlive = frame.alive;
             uploaded = { x0: h.x0, y0: h.y0, w: h.w, h: h.h };
             material.uniforms.uRegion.value.set(h.x0, h.y0, h.w, h.h);
             since = h.snapshotVersion;
@@ -167,17 +170,46 @@ export function GridView() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (!view) return;
-      if (e.ctrlKey || e.deltaMode === 1) {
+      if (e.ctrlKey) {
         const p = local(e);
-        const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.1));
+        const factor = Math.exp(-e.deltaY * 0.01);
         view = zoomAt(view, p.x, p.y, factor);
       } else {
         view = panBy(view, e.deltaX, e.deltaY);
       }
     };
 
+    const cellAt = (e: { clientX: number; clientY: number }): Cell | null => {
+      if (!view) return null;
+      const p = local(e);
+      const c = screenToCell(view, p.x, p.y);
+      const x = Math.floor(c.x);
+      const y = Math.floor(c.y);
+      return x >= 0 && y >= 0 && x < view.gridW && y < view.gridH ? [x, y] : null;
+    };
+    const isAlive = ([x, y]: Cell) => {
+      if (!lastAlive || !uploaded) return false;
+      const cx = x - uploaded.x0;
+      const cy = y - uploaded.y0;
+      if (cx < 0 || cy < 0 || cx >= uploaded.w || cy >= uploaded.h) return false;
+      return ((lastAlive[cy * (uploaded.w / 32) + (cx >> 5)] >>> (cx & 31)) & 1) === 1;
+    };
+    const sendEdit = (cells: Cell[], alive: boolean) => {
+      const inGrid = view ? cells.filter(([x, y]) => x >= 0 && y >= 0 && x < view!.gridW && y < view!.gridH) : [];
+      if (inGrid.length) edit(inGrid, alive).catch(() => {});
+    };
+
     let drag: { x: number; y: number } | null = null;
+    let stroke: ((points: Cell[]) => void) | null = null;
     const onPointerDown = (e: PointerEvent) => {
+      if (e.button === 0 && !spaceHeld) {
+        const c = cellAt(e);
+        if (!c) return;
+        stroke = startStroke(c, strokeMode(isAlive(c)), sendEdit);
+        host.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
       if (e.button === 1 || e.button === 2 || (e.button === 0 && spaceHeld)) {
         drag = { x: e.clientX, y: e.clientY };
         host.setPointerCapture(e.pointerId);
@@ -185,12 +217,24 @@ export function GridView() {
       }
     };
     const onPointerMove = (e: PointerEvent) => {
+      if (stroke && view) {
+        // Unclamped points: cells outside the grid are filtered at send time.
+        const events = e.getCoalescedEvents?.() ?? [];
+        const points = (events.length ? events : [e]).map((ev): Cell => {
+          const p = local(ev);
+          const c = screenToCell(view!, p.x, p.y);
+          return [Math.floor(c.x), Math.floor(c.y)];
+        });
+        stroke(points);
+        return;
+      }
       if (!drag || !view) return;
       view = panBy(view, drag.x - e.clientX, drag.y - e.clientY);
       drag = { x: e.clientX, y: e.clientY };
     };
     const onPointerUp = () => {
       drag = null;
+      stroke = null;
     };
     const onContextMenu = (e: Event) => e.preventDefault();
 
