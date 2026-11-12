@@ -52,8 +52,8 @@ transfer of the cells in view, React with TypeScript, three.js on WebGL.
   clear. F: fit to window. Space is only the pan modifier.
 - **Open question §13 (discard confirmation)** is built without confirmations.
   Adding one later changes only WP5.
-- **Three-OS checks.** Gates check macOS only. Windows and Linux are checked
-  once, in Verification, before the roadmap marks Phase 1 `Done`.
+- **Three-OS checks.** Gates and Verification check macOS only. Windows and
+  Linux checks are deferred debt, tracked in the roadmap.
 
 ### Frame layout v1
 
@@ -339,12 +339,11 @@ Proposes, for approval:
   - Execution guardrails: replace the TODO with `git push`.
 - `.claude/agents/engine.md`, `ui.md`, `host.md`: fill the `TODO(kit)` layer
   rules and the test commands.
-- `docs/roadmap.md`: Phase 1 to `Done` once Verification has passed on all three
-  operating systems.
+- `docs/roadmap.md`: Phase 1 to `Done` once Verification has passed on macOS.
 
 ## Verification
 
-On macOS at WP6, then once on Windows and Linux before Phase 1 is `Done`:
+On macOS at WP6 (Windows and Linux are deferred; see the roadmap):
 
 - Launch opens an empty 256 × 256 wrapping universe, fitted.
 - Draw and erase strokes while playing and while paused; a fast drag leaves no

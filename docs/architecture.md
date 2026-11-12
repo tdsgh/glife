@@ -92,6 +92,7 @@ non-square tilings, closed surfaces, 3D, other rules and the infinite universe.
 
 ## Known issues / accepted debt
 
-- Performance is verified on macOS only; Windows and Linux are unchecked.
+- Phase 1 Verification, including performance, has run on macOS only; Windows
+  and Linux are unchecked.
 - Cells are drawn only through the shader; no automated test covers rendering.
 - Release builds run as an unbundled binary; there are no installers or signing.

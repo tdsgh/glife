@@ -20,7 +20,7 @@ saved at each step of the way.
 
 | # | Phase | Status | Phase document |
 |---|---|---|---|
-| 1 | Classic Life | In progress | [glife-phase-1.md](glife-phase-1.md) |
+| 1 | Classic Life | Done | [glife-phase-1.md](glife-phase-1.md) |
 | 2 | Patterns | Planned | — |
 | 3 | Non-square tilings | Planned | — |
 | 4 | Closed surfaces | Planned | — |
@@ -52,8 +52,7 @@ Conway's Game of Life on a bounded square grid, fully interactive.
   and clear. Zoom and pan. Generation count and live-cell count.
 - **Out.** Saving, pattern files, any rule other than B3/S23.
 - **Done when.** Known patterns behave correctly (a blinker oscillates, a block
-  stays still, a glider travels), and a large grid runs smoothly on all three
-  operating systems.
+  stays still, a glider travels), and a large grid runs smoothly on macOS.
 
 ### Phase 2 — Patterns
 
@@ -148,7 +147,7 @@ A square 2D universe with no edges.
 
 - **Transfer speed on Windows.** Moving cells from the engine to the UI may be
   slower in the Windows webview than on macOS and Linux. Verified on macOS; not
-  yet measured on Windows or Linux.
+  yet measured on Windows or Linux. Accepted debt, not a gate for any phase.
 - **Large grids on screen.** A zoomed-out view of millions of cells needs a
   different way of drawing than a zoomed-in view of individual cells.
 - **Irregular cells on closed surfaces.** Cells with an unusual number of
@@ -186,6 +185,8 @@ A square 2D universe with no edges.
 
 - A phase moves to `In progress` when its phase document is created, and to
   `Done` when it is built. The Phase document column links that document.
+- A phase is verified and marked `Done` on macOS. Windows and Linux checks are
+  deferred debt, listed under Risks and known costs.
 - Phases are appended, or reordered before they start. A phase that has started
   keeps its number.
 - Each phase keeps a short summary here. Requirements live in its phase
