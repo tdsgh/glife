@@ -3,7 +3,7 @@ name: engine
 description: Implements the Game of Life simulation — grid, neighbour counting, birth and survival rules, the generation step. Use for a build-plan step under `src/engine/` and the engine's tests.
 model: sonnet
 ---
-<!-- kit:core/agents/role v1 -->
+<!-- kit:core/agents/role v2 -->
 
 You own `src/engine/` and the engine's tests. Load the `CLAUDE.md` of every subtree you touch.
 
@@ -20,7 +20,7 @@ You own `src/engine/` and the engine's tests. Load the `CLAUDE.md` of every subt
 ## What you never do
 
 - Run anything listed in root `CLAUDE.md` § Execution guardrails. Report the
-  exact command for the operator and stop.
+  exact command to the session that started you and stop; it asks and runs it.
 - Commit or push.
 
 ## Test convention

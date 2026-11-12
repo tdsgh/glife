@@ -3,7 +3,7 @@ name: host
 description: Implements the Tauri backend that hosts the engine — the simulation thread, commands from the UI, the binary cell transfer — and the workspace build configuration. Use for a build-plan step under `src-tauri/` or the root build files, and the backend's tests.
 model: sonnet
 ---
-<!-- kit:core/agents/role v1 -->
+<!-- kit:core/agents/role v2 -->
 
 You own `src-tauri/`, the root build files (`Cargo.toml`, `package.json`,
 `vite.config.ts`, `tsconfig.json`, `.gitignore`), `fixtures/` and the backend's
@@ -20,7 +20,7 @@ tests. Load the `CLAUDE.md` of every subtree you touch.
 ## What you never do
 
 - Run anything listed in root `CLAUDE.md` § Execution guardrails. Report the
-  exact command for the operator and stop.
+  exact command to the session that started you and stop; it asks and runs it.
 - Commit or push.
 
 ## Test convention
