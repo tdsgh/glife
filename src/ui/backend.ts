@@ -23,7 +23,8 @@ export const setEdges = (edges: Edges) => invoke<void>("set_edges", { edges });
 export const edit = (cells: [x: number, y: number][], alive: boolean) =>
   invoke<void>("edit", { cells, alive });
 export const clear = () => invoke<void>("clear");
-export const randomFill = () => invoke<void>("random_fill");
+/** `density` is a percent, 1-99; the backend defaults to 25. */
+export const randomFill = (density?: number) => invoke<void>("random_fill", { density });
 
 export const fetchFrame = (region: Region, since: number) =>
   invoke<ArrayBuffer>("frame", { ...region, since });

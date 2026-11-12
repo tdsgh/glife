@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { fetchFrame, NO_VERSION, type Region } from "../backend";
+import { onFit, setHeader } from "../state";
 import { decodeFrame, type FrameHeader } from "../frame";
 import { fragmentShader, vertexShader } from "./gridShader";
 import { fit, panBy, resize, visibleRegion, zoomAt, type Viewport } from "./viewport";
@@ -90,6 +91,7 @@ export function GridView() {
           const frame = decodeFrame(buf);
           const h = frame.header;
           header = h;
+          setHeader(h);
           const key = `${h.gridWidth}x${h.gridHeight}`;
           if (key !== gridKey) {
             gridKey = key;
@@ -205,6 +207,10 @@ export function GridView() {
       if (e.code === "Space") spaceHeld = false;
     };
 
+    const offFit = onFit(() => {
+      if (view) view = fit(size.width, size.height, view.gridW, view.gridH);
+    });
+
     host.addEventListener("wheel", onWheel, { passive: false });
     host.addEventListener("pointerdown", onPointerDown);
     host.addEventListener("pointermove", onPointerMove);
@@ -218,6 +224,7 @@ export function GridView() {
       disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      offFit();
       host.removeEventListener("wheel", onWheel);
       host.removeEventListener("pointerdown", onPointerDown);
       host.removeEventListener("pointermove", onPointerMove);
