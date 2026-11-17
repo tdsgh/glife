@@ -94,9 +94,11 @@ and imported patterns go (§5).
 
 **Where it comes from.** The built-in library ships with the app. Each pattern
 is its published RLE together with its category, period, speed and a
-description written for glife. The library grows by adding a pattern to the
-app's source and building a new version. The correctness check in §13 then
-confirms its stated period and speed.
+description written for glife, kept as one file in the library's folder. The
+library grows by adding a file to that folder and restarting the app; no new
+build is needed. When it loads the library, the app checks each pattern
+against its stated period and speed (§13). A file that cannot be read or fails
+its check is not offered; the panel names it with the reason.
 
 ## 5. The personal pattern library
 
@@ -352,7 +354,8 @@ depend on the universe.
   spaceship returns to its starting shape, moved by its stated displacement,
   after its period; each gun returns to its starting shape after its period and
   has emitted its stated output. Methuselahs are not checked, since their
-  outcome depends on the grid.
+  outcome depends on the grid. The check runs every time the app loads the
+  library, and over the patterns shipped with the app before each release.
 - Phase 1's known-pattern checks still pass.
 
 ## 14. Feasibility
@@ -419,9 +422,9 @@ the plan should measure them early, on a full 2048 × 2048 grid.
 The glife file needs a version and room for what later phases add (§16). The
 personal library's on-disk form is open; it must stay readable by a person,
 since its folder is shown to the operator, and it must record each pattern's
-tiling. The built-in library needs one place in the source where a pattern and
-its facts are added, so that a new pattern is one addition and the correctness
-check picks it up without further changes.
+tiling. The built-in library is a folder with one file per pattern and its
+facts, so that a new pattern is one added file and the correctness check picks
+it up without further changes or a new build.
 
 File dialogs, clipboard access, menus and storage in the user's app-data folder
 are new to the app. The keys for the select tool and for flipping are still to
