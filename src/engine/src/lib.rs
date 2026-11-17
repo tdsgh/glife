@@ -3,6 +3,8 @@
 
 mod ages;
 mod grid;
+mod pattern;
+mod region;
 mod rng;
 mod step;
 #[cfg(test)]
@@ -11,6 +13,11 @@ mod tests;
 use std::fmt;
 
 use grid::Grid;
+
+pub use pattern::Pattern;
+pub use region::{
+    Axis, Capture, CellState, PartsError, PasteMode, PlaceError, Rect,
+};
 
 /// The shortest side a universe may have.
 pub const MIN_SIDE: u32 = 3;

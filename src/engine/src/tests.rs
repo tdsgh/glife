@@ -687,6 +687,354 @@ fn set_edges_applies_from_the_next_generation() {
     assert_eq!(alive(&u), [(0, 2), (1, 2)].into());
 }
 
+// Patterns and regions
+
+use crate::{Axis, PasteMode, Pattern, Rect};
+
+fn pattern(w: u32, h: u32, cells: &[(u32, u32)]) -> Pattern {
+    let mut p = Pattern::new(w, h);
+    for &(x, y) in cells {
+        p.set(x, y, true);
+    }
+    p
+}
+
+/// Every cell's alive state, age and trail.
+fn full_state(u: &Universe) -> Vec<(bool, u16, u8)> {
+    let mut v = Vec::new();
+    for y in 0..u.height() {
+        for x in 0..u.width() {
+            v.push((u.get(x, y), u.age(x, y), u.trail(x, y)));
+        }
+    }
+    v
+}
+
+/// Alive state and age of live cells only, which is what a capture keeps.
+fn live_state(u: &Universe) -> Vec<(bool, u16)> {
+    full_state(u)
+        .into_iter()
+        .map(|(a, age, _)| (a, if a { age } else { 0 }))
+        .collect()
+}
+
+#[test]
+fn place_or_keeps_ages_and_gives_new_cells_age_zero() {
+    let mut u = universe(10, 10, Edges::Dead, &[(3, 3), (4, 3), (3, 4), (4, 4)]);
+    u.step();
+    u.step();
+    assert_eq!(u.age(3, 3), 2);
+    let p = pattern(3, 3, &[(0, 0), (1, 1)]);
+    u.place(&p, 2, 2, PasteMode::Or).unwrap();
+    assert_eq!(u.age(3, 3), 2);
+    assert!(u.get(2, 2));
+    assert_eq!(u.age(2, 2), 0);
+    assert_eq!(u.live_count(), 5);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn place_copy_replaces_the_rectangle_without_trail() {
+    let mut u = universe(10, 10, Edges::Dead, &[(2, 2), (3, 2), (2, 3), (3, 3)]);
+    u.step();
+    u.step();
+    let before = u.age(2, 2);
+    assert!(before > 0);
+    // A dead cell with a trail elsewhere inside the rectangle's reach.
+    let mut v = universe(10, 10, Edges::Dead, &[(8, 8)]);
+    v.step();
+    assert_eq!(v.trail(8, 8), 1);
+    let p = pattern(2, 2, &[(0, 0)]);
+    u.place(&p, 2, 2, PasteMode::Copy).unwrap();
+    assert!(u.get(2, 2) && !u.get(3, 2) && !u.get(2, 3) && !u.get(3, 3));
+    assert_eq!(u.age(2, 2), before);
+    assert_eq!(u.trail(3, 2), 0);
+    assert_eq!(u.live_count(), 1);
+    // Placing over a dead cell with a trail: Copy leaves a dead cell's trail.
+    v.place(&p, 8, 8, PasteMode::Copy).unwrap();
+    assert!(v.get(8, 8) && v.trail(8, 8) == 0 && v.age(8, 8) == 0);
+    assert_storage_consistent(&u);
+    assert_storage_consistent(&v);
+}
+
+#[test]
+fn place_wraps_across_edges_and_corners() {
+    let p = pattern(2, 2, &[(0, 0), (1, 0), (0, 1), (1, 1)]);
+    for (x, y, expected) in [
+        (-1, 3, vec![(7, 3), (7, 4), (0, 3), (0, 4)]),
+        (3, -1, vec![(3, 5), (4, 5), (3, 0), (4, 0)]),
+        (7, 5, vec![(7, 5), (0, 5), (7, 0), (0, 0)]),
+        (-1, -1, vec![(7, 5), (0, 5), (7, 0), (0, 0)]),
+    ] {
+        let mut u = Universe::new(8, 6, Edges::Wrap).unwrap();
+        u.place(&p, x, y, PasteMode::Or).unwrap();
+        assert_eq!(alive(&u), expected.into_iter().collect::<Cells>(), "at {x},{y}");
+    }
+}
+
+#[test]
+fn place_on_dead_edges_drops_the_outside_part() {
+    let p = pattern(2, 2, &[(0, 0), (1, 0), (0, 1), (1, 1)]);
+    let mut u = Universe::new(8, 6, Edges::Dead).unwrap();
+    u.place(&p, -1, -1, PasteMode::Or).unwrap();
+    assert_eq!(alive(&u), [(0, 0)].into());
+    u.clear();
+    u.place(&p, 7, 5, PasteMode::Or).unwrap();
+    assert_eq!(alive(&u), [(7, 5)].into());
+    u.clear();
+    u.place(&p, 20, 20, PasteMode::Or).unwrap();
+    assert_eq!(u.live_count(), 0);
+}
+
+#[test]
+fn place_refuses_a_pattern_larger_than_the_grid() {
+    let mut u = Universe::new(8, 6, Edges::Wrap).unwrap();
+    let err = u.place(&Pattern::new(9, 2), 0, 0, PasteMode::Or).unwrap_err();
+    assert_eq!((err.pattern, err.grid), ((9, 2), (8, 6)));
+    assert!(u.place(&Pattern::new(2, 7), 0, 0, PasteMode::Or).is_err());
+    assert!(u.place(&Pattern::new(8, 6), 0, 0, PasteMode::Or).is_ok());
+}
+
+#[test]
+fn footprint_agrees_with_where_place_writes() {
+    let full = |w, h| {
+        let mut p = Pattern::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                p.set(x, y, true);
+            }
+        }
+        p
+    };
+    for edges in [Edges::Wrap, Edges::Dead] {
+        for (w, h) in [(1, 1), (3, 2), (8, 6)] {
+            for x in -9..=9 {
+                for y in -7..=7 {
+                    let mut u = Universe::new(8, 6, edges).unwrap();
+                    u.place(&full(w, h), x, y, PasteMode::Or).unwrap();
+                    let mut covered = Cells::new();
+                    for r in u.footprint(w, h, x, y) {
+                        for cy in r.y..r.y + r.h {
+                            for cx in r.x..r.x + r.w {
+                                assert!(covered.insert((cx, cy)), "overlap");
+                            }
+                        }
+                    }
+                    assert_eq!(alive(&u), covered, "{edges:?} {w}x{h} at {x},{y}");
+                }
+            }
+        }
+    }
+    let u = Universe::new(8, 6, Edges::Wrap).unwrap();
+    assert_eq!(u.footprint(2, 2, 7, 5).len(), 4);
+}
+
+#[test]
+fn flip_twice_is_identity_and_flip_moves_ages_and_trail() {
+    let mut u = Universe::new(12, 9, Edges::Wrap).unwrap();
+    u.random_fill(0.4, 5);
+    for _ in 0..7 {
+        u.step();
+    }
+    let r = Rect { x: 2, y: 1, w: 7, h: 6 };
+    let before = full_state(&u);
+    for axis in [Axis::Horizontal, Axis::Vertical] {
+        let mut v = u.clone();
+        v.flip_rect(r, axis);
+        assert_ne!(full_state(&v), before);
+        for dy in 0..r.h {
+            for dx in 0..r.w {
+                let (mx, my) = match axis {
+                    Axis::Horizontal => (r.w - 1 - dx, dy),
+                    Axis::Vertical => (dx, r.h - 1 - dy),
+                };
+                let (a, b) = ((r.x + dx, r.y + dy), (r.x + mx, r.y + my));
+                assert_eq!(
+                    (v.get(a.0, a.1), v.age(a.0, a.1), v.trail(a.0, a.1)),
+                    (u.get(b.0, b.1), u.age(b.0, b.1), u.trail(b.0, b.1))
+                );
+            }
+        }
+        assert_storage_consistent(&v);
+        // The trailing bit layer follows: stepping matches stepping a copy
+        // flipped the same way only if trail counters keep fading.
+        v.flip_rect(r, axis);
+        assert_eq!(full_state(&v), before);
+    }
+}
+
+#[test]
+fn extract_after_place_gives_the_pattern_back() {
+    let p = pattern(5, 4, &[(0, 0), (4, 3), (2, 1), (1, 3)]);
+    for edges in [Edges::Wrap, Edges::Dead] {
+        let mut u = Universe::new(20, 20, edges).unwrap();
+        u.place(&p, 6, 7, PasteMode::Or).unwrap();
+        assert_eq!(u.extract(Rect { x: 6, y: 7, w: 5, h: 4 }), p);
+    }
+}
+
+#[test]
+fn kill_rect_kills_without_trail_and_keeps_the_rest() {
+    let mut u = universe(8, 8, Edges::Dead, &[(1, 1), (2, 2), (6, 6)]);
+    u.kill_rect(Rect { x: 0, y: 0, w: 4, h: 4 });
+    assert_eq!(alive(&u), [(6, 6)].into());
+    assert_eq!(u.trail(1, 1), 0);
+    assert_eq!(u.live_count(), 1);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn erasing_a_dead_cell_leaves_its_trail() {
+    let mut u = universe(8, 8, Edges::Dead, &[(4, 4)]);
+    u.step();
+    assert_eq!(u.trail(4, 4), 1);
+    u.set(4, 4, false);
+    u.kill_rect(Rect { x: 0, y: 0, w: 8, h: 8 });
+    assert_eq!(u.trail(4, 4), 1);
+}
+
+#[test]
+fn restore_after_edits_restores_cells_ages_and_count() {
+    let mut u = Universe::new(40, 30, Edges::Wrap).unwrap();
+    u.random_fill(0.3, 11);
+    for _ in 0..5 {
+        u.step();
+    }
+    let whole = Rect { x: 0, y: 0, w: 40, h: 30 };
+    let part = Rect { x: 5, y: 4, w: 20, h: 12 };
+    let blob = pattern(6, 6, &[(0, 0), (1, 1), (5, 5), (2, 4)]);
+    for rects in [vec![whole], vec![part]] {
+        let mut v = u.clone();
+        let (g, count) = (v.generation(), v.live_count());
+        let expected = live_state(&v);
+        let capture = v.capture(&rects);
+        v.flip_rect(part, Axis::Horizontal);
+        v.kill_rect(Rect { x: 8, y: 8, w: 6, h: 6 });
+        v.place(&blob, 20, 12, PasteMode::Copy).unwrap();
+        v.place(&blob, 38, 28, PasteMode::Or).unwrap();
+        v.restore(&capture);
+        if rects[0] == whole {
+            assert_eq!(live_state(&v), expected);
+            assert_eq!(v.live_count(), count);
+        } else {
+            let after = live_state(&v);
+            for y in 0..30u32 {
+                for x in 0..40u32 {
+                    let i = (y * 40 + x) as usize;
+                    let inside = (5..25).contains(&x) && (4..16).contains(&y);
+                    if inside {
+                        assert_eq!(after[i], expected[i], "{x},{y}");
+                    }
+                }
+            }
+        }
+        assert_eq!(v.generation(), g);
+        assert_storage_consistent(&v);
+        for y in rects[0].y..rects[0].y + rects[0].h {
+            for x in rects[0].x..rects[0].x + rects[0].w {
+                assert_eq!(v.trail(x, y), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn restore_after_random_fill_and_clear_restores_everything() {
+    let mut u = Universe::new(33, 17, Edges::Dead).unwrap();
+    u.random_fill(0.5, 2);
+    u.step();
+    let whole = Rect { x: 0, y: 0, w: 33, h: 17 };
+    let expected = live_state(&u);
+    let count = u.live_count();
+    let capture = u.capture(&[whole]);
+    u.random_fill(0.2, 3);
+    u.restore(&capture);
+    assert_eq!(live_state(&u), expected);
+    assert_eq!(u.live_count(), count);
+    u.clear();
+    u.restore(&capture);
+    assert_eq!(live_state(&u), expected);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn restore_cell_puts_back_one_cell() {
+    let mut u = universe(8, 8, Edges::Dead, &[(2, 2), (2, 3), (3, 2), (3, 3)]);
+    u.step();
+    u.step();
+    let age = u.age(2, 2);
+    let cell = u.capture_cell(2, 2);
+    u.set(2, 2, false);
+    u.restore_cell(cell);
+    assert!(u.get(2, 2));
+    assert_eq!(u.age(2, 2), age);
+    let dead = u.capture_cell(6, 6);
+    u.set(6, 6, true);
+    u.restore_cell(dead);
+    assert!(!u.get(6, 6));
+    assert_eq!(u.live_count(), 4);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn whole_grid_capture_is_compact() {
+    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap).unwrap();
+    u.random_fill(0.25, 1);
+    let capture = u.capture(&[Rect { x: 0, y: 0, w: MAX_SIDE, h: MAX_SIDE }]);
+    let bits = (MAX_SIDE as usize * MAX_SIDE as usize) / 8;
+    assert!(
+        capture.bytes() - bits < 1 << 20,
+        "ages took {} bytes",
+        capture.bytes() - bits
+    );
+    assert!(capture.bytes() < bits + (1 << 20));
+}
+
+#[test]
+fn thumbnail_downsamples_and_keeps_single_cells() {
+    let mut big = Pattern::new(2048, 2048);
+    big.set(2047, 2047, true);
+    let t = big.thumbnail(64);
+    assert_eq!((t.width(), t.height()), (64, 64));
+    assert_eq!(t.live_count(), 1);
+    let mut one = Pattern::new(2048, 2048);
+    one.set(1000, 5, true);
+    assert_eq!(one.thumbnail(64).live_count(), 1);
+    let wide = Pattern::new(2000, 100).thumbnail(64);
+    assert_eq!((wide.width(), wide.height()), (64, 4));
+    let small = pattern(10, 3, &[(0, 0), (9, 2), (4, 1)]);
+    assert_eq!(small.thumbnail(64), small);
+}
+
+#[test]
+fn pattern_words_and_flip() {
+    let p = pattern(40, 2, &[(0, 0), (33, 0), (39, 1)]);
+    let mut words = Vec::new();
+    p.to_words(&mut words);
+    assert_eq!(words, [40, 2, 1, 1 << 1, 0, 1 << 7]);
+    assert_eq!(p.live_count(), 3);
+    assert_eq!(p.flipped(Axis::Horizontal).flipped(Axis::Horizontal), p);
+    assert!(p.flipped(Axis::Horizontal).get(39, 0));
+    assert!(p.flipped(Axis::Vertical).get(39, 0));
+    assert!(!p.get(40, 0));
+    assert!(Pattern::new(1, 1).live_count() == 0);
+}
+
+#[test]
+fn from_parts_builds_a_universe_with_ages() {
+    let p = pattern(4, 3, &[(1, 1)]);
+    let mut ages = vec![0u16; 12];
+    ages[5] = 9;
+    let u = Universe::from_parts(4, 3, Edges::Dead, 7, &p, &ages).unwrap();
+    assert_eq!((u.generation(), u.live_count(), u.age(1, 1)), (7, 1, 9));
+    assert!(Universe::from_parts(4, 3, Edges::Dead, 0, &p, &ages[1..]).is_err());
+    assert!(Universe::from_parts(5, 3, Edges::Dead, 0, &p, &ages).is_err());
+    assert!(Universe::from_parts(2, 3, Edges::Dead, 0, &p, &ages).is_err());
+    let mut u = u;
+    u.set_generation(3);
+    assert_eq!(u.generation(), 3);
+}
+
 // Timing
 
 #[test]
