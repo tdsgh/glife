@@ -48,6 +48,19 @@ export const place = (x: number, y: number, flipH: boolean, flipV: boolean, mode
 /** The pending pattern as a raw pattern buffer. */
 export const pendingCells = () => invoke<ArrayBuffer>("pending_cells");
 
+/** Reads the clipboard's RLE into the pending slot; rejects with a message when there is none. Needs the WP8 backend. */
+export const paste = () => invoke<PendingInfo>("paste");
+export const copySelection = (rect: Rect) => invoke<void>("copy_selection", { ...rect });
+export const cutSelection = (rect: Rect) => invoke<void>("cut_selection", { ...rect });
+
+export interface PendingInfo {
+  width: number;
+  height: number;
+  name: string;
+  comment: string;
+  notices: string[];
+}
+
 export const LAYER_AGE = 1;
 export const LAYER_TRAIL = 2;
 

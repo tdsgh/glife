@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { edit, fetchFrame, NO_VERSION, type Region } from "../backend";
+import { dispatch } from "../controls/actions";
+import * as tools from "../edit/tools";
 import { getState, onFit, setHeader, wantedLayers } from "../state";
 import { paletteColors } from "../color/palettes";
 import { decodeFrame, type FrameHeader } from "../frame";
@@ -16,10 +18,12 @@ const sameRegion = (a: Region, b: Region) =>
 export function GridView() {
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const host = hostRef.current!;
     const overlay = overlayRef.current!;
+    const label = labelRef.current!;
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -54,6 +58,8 @@ export function GridView() {
       tex.needsUpdate = true;
       return tex;
     };
+    let placeTexture = placeholder();
+    let placeBits: Uint32Array | null = null;
     let paletteKey = "";
     let paletteTexture = new THREE.DataTexture(new Uint8Array(4), 1, 1);
 
@@ -71,6 +77,16 @@ export function GridView() {
         uMode: { value: 0 },
         uAges: { value: agesTexture },
         uTrail: { value: trailTexture },
+        uPlace: { value: placeTexture },
+        uPlaceOn: { value: 0 },
+        uPlaceOrigin: { value: new THREE.Vector2(0, 0) },
+        uPlaceSize: { value: new THREE.Vector2(1, 1) },
+        uPlaceFlip: { value: new THREE.Vector2(0, 0) },
+        uWrap: { value: 1 },
+        uSel: { value: new THREE.Vector4(0, 0, 0, 0) },
+        uSelOn: { value: 0 },
+        uPlaceColor: { value: new THREE.Color(0x7fd1ff) },
+        uSelColor: { value: new THREE.Color(0xffcc33) },
         uPalette: { value: paletteTexture },
         uPaletteN: { value: 1 },
         uTrailLen: { value: 0 },
@@ -132,6 +148,7 @@ export function GridView() {
           if (key !== gridKey) {
             gridKey = key;
             view = fit(size.width, size.height, h.gridWidth, h.gridHeight);
+            dispatch(tools.reset(getState().edit));
             uploaded = null;
             since = NO_VERSION;
           }
@@ -208,6 +225,36 @@ export function GridView() {
         }
         u.uMode.value = settings.coloring === "age" && haveAges ? 1 : 0;
         u.uTrailLen.value = settings.coloring === "age" && settings.trail && haveTrail ? settings.trailLength : 0;
+        const { placing, selection } = getState().edit;
+        u.uWrap.value = header?.edges === "dead" ? 0 : 1;
+        if (placing && hover) {
+          if (placing.bits !== placeBits) {
+            placeBits = placing.bits;
+            placeTexture.dispose();
+            placeTexture = new THREE.DataTexture(placing.bits, Math.ceil(placing.width / 32), placing.height, THREE.RedIntegerFormat, THREE.UnsignedIntType);
+            placeTexture.internalFormat = "R32UI";
+            placeTexture.minFilter = placeTexture.magFilter = THREE.NearestFilter;
+            placeTexture.needsUpdate = true;
+            u.uPlace.value = placeTexture;
+          }
+          u.uPlaceOn.value = 1;
+          u.uPlaceOrigin.value.set(hover[0] - (placing.width >> 1), hover[1] - (placing.height >> 1));
+          u.uPlaceSize.value.set(placing.width, placing.height);
+          u.uPlaceFlip.value.set(placing.flipH ? 1 : 0, placing.flipV ? 1 : 0);
+        } else {
+          u.uPlaceOn.value = 0;
+        }
+        u.uSelOn.value = selection ? 1 : 0;
+        if (selection) {
+          u.uSel.value.set(selection.x, selection.y, selection.w, selection.h);
+          label.style.display = "block";
+          label.textContent = `${selection.w} × ${selection.h}`;
+          const lx = (selection.x - view.centerX) * view.pxPerCell + view.width / 2;
+          const ly = (selection.y - view.centerY) * view.pxPerCell + view.height / 2;
+          label.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly > 24 ? ly - 22 : ly + selection.h * view.pxPerCell + 4)}px)`;
+        } else {
+          label.style.display = "none";
+        }
         renderer.render(scene, camera);
       }
       updateOverlay(now);
@@ -252,19 +299,33 @@ export function GridView() {
       if (cx < 0 || cy < 0 || cx >= uploaded.w || cy >= uploaded.h) return false;
       return ((lastAlive[cy * (uploaded.w / 32) + (cx >> 5)] >>> (cx & 31)) & 1) === 1;
     };
-    const sendEdit = (cells: Cell[], alive: boolean) => {
+    const sendEdit = (cells: Cell[], alive: boolean, strokeId: number) => {
       const inGrid = view ? cells.filter(([x, y]) => x >= 0 && y >= 0 && x < view!.gridW && y < view!.gridH) : [];
-      if (inGrid.length) edit(inGrid, alive).catch(() => {});
+      if (inGrid.length) edit(inGrid, alive, strokeId).catch(() => {});
     };
 
+    let hover: Cell | null = null;
     let drag: { x: number; y: number } | null = null;
     let stroke: ((points: Cell[]) => void) | null = null;
+    const grid = (): tools.Grid => ({ w: view!.gridW, h: view!.gridH });
+    // Unclamped cell under the pointer, for the select drag and for placing.
+    const rawCell = (e: { clientX: number; clientY: number }): Cell => {
+      const p = local(e);
+      const c = screenToCell(view!, p.x, p.y);
+      return [Math.floor(c.x), Math.floor(c.y)];
+    };
     const onPointerDown = (e: PointerEvent) => {
       if (e.button === 0 && !spaceHeld) {
-        const c = cellAt(e);
-        if (!c) return;
-        stroke = startStroke(c, strokeMode(isAlive(c)), sendEdit);
-        host.setPointerCapture(e.pointerId);
+        if (!view) return;
+        const c = rawCell(e);
+        const r = tools.pointerDown(getState().edit, c, grid());
+        dispatch(r);
+        const begun = r.effects.find((f) => f.kind === "stroke");
+        if (begun) {
+          const id = begun.id;
+          stroke = startStroke(c, strokeMode(isAlive(c)), (cells, alive) => sendEdit(cells, alive, id));
+        }
+        if (begun || getState().edit.dragging) host.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
       }
@@ -275,6 +336,11 @@ export function GridView() {
       }
     };
     const onPointerMove = (e: PointerEvent) => {
+      if (view) hover = cellAt(e);
+      if (view && getState().edit.dragging) {
+        dispatch(tools.pointerMove(getState().edit, rawCell(e), grid()));
+        return;
+      }
       if (stroke && view) {
         // Unclamped points: cells outside the grid are filtered at send time.
         const events = e.getCoalescedEvents?.() ?? [];
@@ -293,6 +359,10 @@ export function GridView() {
     const onPointerUp = () => {
       drag = null;
       stroke = null;
+      dispatch(tools.pointerUp(getState().edit));
+    };
+    const onPointerLeave = () => {
+      hover = null;
     };
     const onContextMenu = (e: Event) => e.preventDefault();
 
@@ -318,6 +388,7 @@ export function GridView() {
     host.addEventListener("pointermove", onPointerMove);
     host.addEventListener("pointerup", onPointerUp);
     host.addEventListener("pointercancel", onPointerUp);
+    host.addEventListener("pointerleave", onPointerLeave);
     host.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -332,12 +403,14 @@ export function GridView() {
       host.removeEventListener("pointermove", onPointerMove);
       host.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("pointercancel", onPointerUp);
+      host.removeEventListener("pointerleave", onPointerLeave);
       host.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       texture.dispose();
       agesTexture.dispose();
       trailTexture.dispose();
+      placeTexture.dispose();
       paletteTexture.dispose();
       material.dispose();
       renderer.dispose();
@@ -357,6 +430,21 @@ export function GridView() {
           padding: "2px 6px",
           font: "12px monospace",
           color: "#e8f1ff",
+          background: "rgba(0,0,0,0.6)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        ref={labelRef}
+        data-testid="selection-label"
+        style={{
+          display: "none",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          padding: "1px 5px",
+          font: "12px monospace",
+          color: "#ffcc33",
           background: "rgba(0,0,0,0.6)",
           pointerEvents: "none",
         }}

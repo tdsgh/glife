@@ -71,3 +71,18 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
   }
   return { header, alive, ages, trail };
 }
+
+export interface Pattern {
+  width: number;
+  height: number;
+  /** `height` rows of `ceil(width / 32)` words; bit `i` of word `k` is column `32k + i`. */
+  bits: Uint32Array;
+}
+
+/** Decodes a raw pattern buffer: `[width, height]`, then the rows. */
+export function decodePattern(buffer: ArrayBuffer): Pattern {
+  const words = new Uint32Array(buffer);
+  const width = words[0];
+  const height = words[1];
+  return { width, height, bits: words.subarray(2, 2 + Math.ceil(width / 32) * height) };
+}

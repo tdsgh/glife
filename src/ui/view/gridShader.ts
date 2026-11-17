@@ -21,6 +21,16 @@ uniform usampler2D uTrail;   // same shape; counter 0 means no trail
 uniform sampler2D uPalette;  // uPaletteN entries
 uniform int uPaletteN;
 uniform int uTrailLen;       // 0 when the trail is off
+uniform usampler2D uPlace;   // the pattern being placed: one texel per 32 cells of a row
+uniform int uPlaceOn;
+uniform vec2 uPlaceOrigin;   // top-left cell of the pattern
+uniform vec2 uPlaceSize;     // width, height in cells
+uniform vec2 uPlaceFlip;     // 1 when flipped horizontally, vertically
+uniform int uWrap;           // 1 when the grid wraps
+uniform vec4 uSel;           // selection x, y, w, h in cells
+uniform int uSelOn;
+uniform vec3 uPlaceColor;
+uniform vec3 uSelColor;
 uniform vec3 uAliveColor;
 uniform vec3 uDeadColor;
 uniform vec3 uLineColor;
@@ -50,6 +60,18 @@ bool ageColor(ivec2 c, out vec3 col) {
   col = texelFetch(uPalette, ivec2(age, 0), 0).rgb;
   if (!live) col = mix(col, uDeadColor, float(d) / float(uTrailLen + 1));
   return true;
+}
+
+// 0 outside the pattern, 1 inside its rectangle, 2 on one of its live cells.
+int placeAt(ivec2 c) {
+  ivec2 size = ivec2(uPlaceSize);
+  ivec2 d = c - ivec2(uPlaceOrigin);
+  if (uWrap == 1) d = ivec2((d.x % int(uGrid.x) + int(uGrid.x)) % int(uGrid.x), (d.y % int(uGrid.y) + int(uGrid.y)) % int(uGrid.y));
+  if (d.x < 0 || d.y < 0 || d.x >= size.x || d.y >= size.y) return 0;
+  if (uPlaceFlip.x > 0.5) d.x = size.x - 1 - d.x;
+  if (uPlaceFlip.y > 0.5) d.y = size.y - 1 - d.y;
+  uint word = texelFetch(uPlace, ivec2(d.x >> 5, d.y), 0).r;
+  return ((word >> uint(d.x & 31)) & 1u) == 1u ? 2 : 1;
 }
 
 void main() {
@@ -94,6 +116,22 @@ void main() {
       vec3 target = uMode == 1 ? sum / float(live) : uAliveColor;
       color = mix(uDeadColor, target, max(share, 0.25));
     }
+  }
+
+  if (uPlaceOn == 1 && inside) {
+    int pl = placeAt(ivec2(floor(c)));
+    if (pl == 1) color = mix(color, uPlaceColor, 0.12);
+    if (pl == 2) color = mix(color, uPlaceColor, 0.6);
+  }
+
+  // Selection outline, one pixel wide.
+  if (uSelOn == 1) {
+    float px = 1.0 / uPpc;
+    float sx = min(abs(c.x - uSel.x), abs(c.x - (uSel.x + uSel.z)));
+    float sy = min(abs(c.y - uSel.y), abs(c.y - (uSel.y + uSel.w)));
+    bool onX = sx < px && c.y > uSel.y - px && c.y < uSel.y + uSel.w + px;
+    bool onY = sy < px && c.x > uSel.x - px && c.x < uSel.x + uSel.z + px;
+    if (onX || onY) color = uSelColor;
   }
 
   // Grid boundary, one pixel wide.

@@ -3,10 +3,10 @@ import { clear, setEdges, setSpeed as sendSpeed } from "../backend";
 import { requestFit, setDensity, setSpeed, SPEEDS, useUiState } from "../state";
 import { ColorControls } from "../color/ColorControls";
 import { NewUniverseDialog } from "./NewUniverseDialog";
-import { randomFill, stepOnce, togglePlay } from "./actions";
+import { flipH, flipV, randomFill, redo, setPasteMode, setTool, stepOnce, togglePlay, undo } from "./actions";
 
 export function Toolbar() {
-  const { header, speed, density } = useUiState();
+  const { header, speed, density, edit } = useUiState();
   const [dialog, setDialog] = useState(false);
   const playing = header?.playing ?? false;
   const edges = header?.edges ?? "wrap";
@@ -37,6 +37,18 @@ export function Toolbar() {
         onChange={(e) => setDensity(e.target.value)} style={{ width: 56 }} />
       <span>%</span>
       <button onClick={() => void clear()}>Clear</button>
+      <button onClick={() => setTool("draw")} aria-pressed={!edit.placing && edit.tool === "draw"}>Draw</button>
+      <button onClick={() => setTool("select")} aria-pressed={!edit.placing && edit.tool === "select"}>Select</button>
+      <button onClick={undo} disabled={playing || !header?.canUndo}>Undo</button>
+      <button onClick={redo} disabled={playing || !header?.canRedo}>Redo</button>
+      <button onClick={flipH} disabled={!edit.placing && !edit.selection}>Flip H</button>
+      <button onClick={flipV} disabled={!edit.placing && !edit.selection}>Flip V</button>
+      {edit.placing && (
+        <>
+          <button onClick={() => setPasteMode("or")} aria-pressed={edit.mode === "or"}>Or</button>
+          <button onClick={() => setPasteMode("copy")} aria-pressed={edit.mode === "copy"}>Copy</button>
+        </>
+      )}
       <button onClick={requestFit}>Fit</button>
       <ColorControls />
       {dialog && <NewUniverseDialog onClose={() => setDialog(false)} />}

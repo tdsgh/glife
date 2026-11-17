@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { newUniverse, type Edges } from "../backend";
+import { resetEdit } from "./actions";
 import { requestFit } from "../state";
 
 const MIN = 3;
@@ -17,6 +18,7 @@ export function NewUniverseDialog({ onClose }: { onClose: () => void }) {
   const confirm = async () => {
     if (w === null || h === null) return;
     await newUniverse(w, h, edges);
+    resetEdit();
     requestFit();
     onClose();
   };

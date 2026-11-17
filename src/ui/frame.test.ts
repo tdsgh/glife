@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { decodeFrame } from "./frame";
+import { decodeFrame, decodePattern } from "./frame";
 
 function build(layers: number[][], over: Partial<Record<number, number>> = {}): ArrayBuffer {
   const head = new Uint32Array(16);
@@ -107,4 +107,13 @@ test("fixtures/frame-v1-layers.bin decodes to its known ages and trail", async (
   expect([50, 51, 52].map((x) => at(trail!, x, 0))).toEqual([2, 3, 2]);
   expect([50, 52].map((x) => at(trail!, x, 1))).toEqual([1, 1]);
   expect(trail!.filter((v) => v > 0).length).toBe(5);
+});
+
+test("decodePattern reads the size and the rows of a hand-built buffer", () => {
+  // 33 x 2: two words per row.
+  const buf = new Uint32Array([33, 2, 0b101, 1, 0x80000000, 0]).buffer;
+  const p = decodePattern(buf);
+  expect(p.width).toBe(33);
+  expect(p.height).toBe(2);
+  expect(Array.from(p.bits)).toEqual([0b101, 1, 0x80000000, 0]);
 });

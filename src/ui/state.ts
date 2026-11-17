@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { LAYER_AGE, LAYER_TRAIL } from "./backend";
 import type { FrameHeader } from "./frame";
+import { initialEdit, type EditState } from "./edit/tools";
 import { PALETTE_SIZES, PALETTES, type PaletteId, type PaletteSize } from "./color/palettes";
 
 export interface ViewSettings {
@@ -37,11 +38,14 @@ export interface UiState {
   /** Random-fill density as typed, percent. */
   density: string;
   settings: ViewSettings;
+  edit: EditState;
+  /** One line for an error or notice; null when there is none. */
+  notice: string | null;
 }
 
 export const SPEEDS: (number | null)[] = [1, 2, 5, 10, 15, 30, 60, 120, 240, null];
 
-let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings() };
+let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings(), edit: initialEdit(), notice: null };
 const listeners = new Set<() => void>();
 const fitListeners = new Set<() => void>();
 
@@ -66,12 +70,17 @@ const sameHeader = (a: FrameHeader | null, b: FrameHeader) =>
   a.gensPerSec === b.gensPerSec &&
   a.gridWidth === b.gridWidth &&
   a.gridHeight === b.gridHeight &&
-  a.edges === b.edges;
+  a.edges === b.edges &&
+  a.canUndo === b.canUndo &&
+  a.canRedo === b.canRedo &&
+  a.dirty === b.dirty;
 
 export function setHeader(header: FrameHeader) {
   if (!sameHeader(state.header, header)) set({ header });
 }
 export const setSpeed = (speed: number | null) => set({ speed });
+export const setEdit = (edit: EditState) => set({ edit });
+export const setNotice = (notice: string | null) => set({ notice });
 export const setDensity = (density: string) => set({ density });
 
 export function setSettings(patch: Partial<ViewSettings>) {
@@ -104,6 +113,6 @@ export function onFit(l: () => void) {
 }
 
 export function resetUiState() {
-  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS } };
+  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS }, edit: initialEdit(), notice: null };
   listeners.forEach((l) => l());
 }
