@@ -18,7 +18,8 @@ async function fixture(): Promise<ArrayBuffer> {
 
 const header = (over: Partial<FrameHeader> = {}): FrameHeader => ({
   version: 1, playing: false, snapshotVersion: 1, generation: 12, liveCount: 34, gensPerSec: 9.6,
-  gridWidth: 256, gridHeight: 128, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0, ...over,
+  gridWidth: 256, gridHeight: 128, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0,
+  canUndo: false, canRedo: false, dirty: false, ...over,
 });
 
 let calls: { cmd: string; args: unknown }[];

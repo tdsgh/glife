@@ -26,5 +26,9 @@ export const clear = () => invoke<void>("clear");
 /** `density` is a percent, 1-99; the backend defaults to 25. */
 export const randomFill = (density?: number) => invoke<void>("random_fill", { density });
 
-export const fetchFrame = (region: Region, since: number) =>
-  invoke<ArrayBuffer>("frame", { ...region, since });
+export const LAYER_AGE = 1;
+export const LAYER_TRAIL = 2;
+
+/** `layers` is a bitmask of LAYER_AGE and LAYER_TRAIL; the alive bits are always sent. */
+export const fetchFrame = (region: Region, since: number, layers: number) =>
+  invoke<ArrayBuffer>("frame", { ...region, since, layers });

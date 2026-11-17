@@ -88,7 +88,7 @@ pub fn random_fill(host: State<Host>, density: Option<f64>) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn frame(host: State<Host>, x0: f64, y0: f64, w: f64, h: f64, since: u64) -> Response {
+pub fn frame(host: State<Host>, x0: f64, y0: f64, w: f64, h: f64, since: u64, layers: u32) -> Response {
     let snapshot = host.latest.lock().unwrap().clone();
-    Response::new(frame::encode(&snapshot, x0, y0, w, h, since))
+    Response::new(frame::encode(&snapshot, x0, y0, w, h, since, layers))
 }

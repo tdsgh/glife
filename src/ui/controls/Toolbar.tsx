@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { clear, setEdges, setSpeed as sendSpeed } from "../backend";
 import { requestFit, setDensity, setSpeed, SPEEDS, useUiState } from "../state";
+import { ColorControls } from "../color/ColorControls";
 import { NewUniverseDialog } from "./NewUniverseDialog";
 import { randomFill, stepOnce, togglePlay } from "./actions";
 
@@ -37,6 +38,7 @@ export function Toolbar() {
       <span>%</span>
       <button onClick={() => void clear()}>Clear</button>
       <button onClick={requestFit}>Fit</button>
+      <ColorControls />
       {dialog && <NewUniverseDialog onClose={() => setDialog(false)} />}
     </div>
   );

@@ -383,17 +383,26 @@ saved to `localStorage` as Decisions taken says.
   sends `NO_VERSION` after each change.
 
 ### Human gate — measurement on macOS
-Needs WP2. Build with `npm run tauri build -- --no-bundle` and run with
-`GLIFE_BENCH=1`. Open the overlay with backquote and record fps, request ms,
-bytes per frame and gen/s, in plain, age, and age with a 100-generation trail:
-- fitted to the window;
-- at about 4 px per cell;
-- while panning.
+Needs WP2. The session builds with `npm run tauri build -- --no-bundle`. The
+person runs `GLIFE_BENCH=1 target/release/glife-app`, presses F to fit, opens
+the overlay with backquote, and records one row per mode:
 
-Also check by eye that, zoomed out, old and young regions can be told apart
-and a lone live cell shows as a faint pixel.
+| Mode | Coloring | Trail | fps | req ms | B/frame | gen/s |
+|---|---|---|---|---|---|---|
+| A | Plain | — | | | | |
+| B | Age | Off | | | | |
+| C | Age | On, length 100 | | | | |
 
-The gate passes at 60 fps and at least 30 gen/s in every mode. If it fails,
+Fit is the heaviest view for transfer: it requests the whole grid.
+
+Then by eye, yes or no:
+- In Age, old and young regions can be told apart.
+- In C at Speed 10, dead cells fade toward the background.
+- The legend and toolbar lay out cleanly.
+- The darkest palette colors stand out from dead cells.
+
+The gate passes at 60 fps and at least 30 gen/s in every row and a yes on
+every visual check. If it fails,
 stop before WP4 and revisit transfer. The candidates: fetch the age and trail
 layers on every other animation frame, or have the backend send one blended
 byte per pixel when cells are smaller than a pixel. The second supersedes

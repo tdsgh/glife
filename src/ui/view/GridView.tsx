@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { edit, fetchFrame, NO_VERSION, type Region } from "../backend";
-import { onFit, setHeader } from "../state";
+import { getState, onFit, setHeader, wantedLayers } from "../state";
+import { paletteColors } from "../color/palettes";
 import { decodeFrame, type FrameHeader } from "../frame";
 import { fragmentShader, vertexShader } from "./gridShader";
 import { startStroke, strokeMode, type Cell } from "../edit/stroke";
@@ -34,6 +35,28 @@ export function GridView() {
     };
     let texture = placeholder();
 
+    const byteTexture = (data: Uint8Array, w: number, h: number) => {
+      const t = new THREE.DataTexture(data, w, h, THREE.RedIntegerFormat, THREE.UnsignedByteType);
+      t.internalFormat = "R8UI";
+      t.minFilter = t.magFilter = THREE.NearestFilter;
+      t.needsUpdate = true;
+      return t;
+    };
+    let agesTexture = byteTexture(new Uint8Array(1), 1, 1);
+    let trailTexture = byteTexture(new Uint8Array(1), 1, 1);
+    // Uploads a byte layer, reallocating the texture only when its size changes.
+    const uploadBytes = (tex: THREE.DataTexture, data: Uint8Array, w: number, h: number) => {
+      if (tex.image.width !== w || tex.image.height !== h) {
+        tex.dispose();
+        return byteTexture(data, w, h);
+      }
+      tex.image.data = data;
+      tex.needsUpdate = true;
+      return tex;
+    };
+    let paletteKey = "";
+    let paletteTexture = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+
     const material = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader,
@@ -45,6 +68,12 @@ export function GridView() {
         uCenter: { value: new THREE.Vector2(0, 0) },
         uWin: { value: new THREE.Vector2(1, 1) },
         uPpc: { value: 1 },
+        uMode: { value: 0 },
+        uAges: { value: agesTexture },
+        uTrail: { value: trailTexture },
+        uPalette: { value: paletteTexture },
+        uPaletteN: { value: 1 },
+        uTrailLen: { value: 0 },
         uAliveColor: { value: new THREE.Color(0xe8f1ff) },
         uDeadColor: { value: new THREE.Color(0x14171c) },
         uLineColor: { value: new THREE.Color(0x4a5260) },
@@ -61,6 +90,10 @@ export function GridView() {
     let gridKey = "";
     let uploaded: Region | null = null;
     let since = NO_VERSION;
+    // Layers the uploaded textures hold, and the ones the last request asked for.
+    let uploadedLayers = -1;
+    let haveAges = false;
+    let haveTrail = false;
     let inFlight = false;
     let disposed = false;
     let spaceHeld = false;
@@ -83,9 +116,10 @@ export function GridView() {
     const request = () => {
       inFlight = true;
       const region = view ? visibleRegion(view) : PROBE;
-      const wanted = view && uploaded && sameRegion(region, uploaded) ? since : NO_VERSION;
+      const layers = wantedLayers();
+      const wanted = view && uploaded && uploadedLayers === layers && sameRegion(region, uploaded) ? since : NO_VERSION;
       const t0 = performance.now();
-      fetchFrame(region, wanted)
+      fetchFrame(region, wanted, layers)
         .then((buf) => {
           if (disposed) return;
           reqMs = performance.now() - t0;
@@ -114,6 +148,17 @@ export function GridView() {
             }
             texture.needsUpdate = true;
             lastAlive = frame.alive;
+            haveAges = frame.ages !== null;
+            haveTrail = frame.trail !== null;
+            if (frame.ages) {
+              agesTexture = uploadBytes(agesTexture, frame.ages, h.w, h.h);
+              material.uniforms.uAges.value = agesTexture;
+            }
+            if (frame.trail) {
+              trailTexture = uploadBytes(trailTexture, frame.trail, h.w, h.h);
+              material.uniforms.uTrail.value = trailTexture;
+            }
+            uploadedLayers = layers;
             uploaded = { x0: h.x0, y0: h.y0, w: h.w, h: h.h };
             material.uniforms.uRegion.value.set(h.x0, h.y0, h.w, h.h);
             since = h.snapshotVersion;
@@ -150,6 +195,19 @@ export function GridView() {
         u.uCenter.value.set(view.centerX, view.centerY);
         u.uWin.value.set(size.width * dpr, size.height * dpr);
         u.uPpc.value = view.pxPerCell * dpr;
+        const { settings } = getState();
+        const key = `${settings.palette}/${settings.paletteSize}`;
+        if (key !== paletteKey) {
+          paletteKey = key;
+          paletteTexture.dispose();
+          paletteTexture = new THREE.DataTexture(paletteColors(settings.palette, settings.paletteSize), settings.paletteSize, 1);
+          paletteTexture.minFilter = paletteTexture.magFilter = THREE.NearestFilter;
+          paletteTexture.needsUpdate = true;
+          u.uPalette.value = paletteTexture;
+          u.uPaletteN.value = settings.paletteSize;
+        }
+        u.uMode.value = settings.coloring === "age" && haveAges ? 1 : 0;
+        u.uTrailLen.value = settings.coloring === "age" && settings.trail && haveTrail ? settings.trailLength : 0;
         renderer.render(scene, camera);
       }
       updateOverlay(now);
@@ -278,6 +336,9 @@ export function GridView() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       texture.dispose();
+      agesTexture.dispose();
+      trailTexture.dispose();
+      paletteTexture.dispose();
       material.dispose();
       renderer.dispose();
       renderer.domElement.remove();

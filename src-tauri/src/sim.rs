@@ -184,13 +184,23 @@ impl Sim {
             self.steps.pop_front();
         }
         self.version += 1;
-        let snapshot = Arc::new(Snapshot {
-            version: self.version,
-            universe: self.universe.clone(),
-            playing: self.playing,
-            gens_per_sec: self.steps.len() as f32,
-        });
-        *self.latest.lock().unwrap() = snapshot;
+        let gens_per_sec = self.steps.len() as f32;
+        let mut latest = self.latest.lock().unwrap();
+        // Reuse the previous snapshot's buffers unless a reader still holds it.
+        if let Some(snapshot) = Arc::get_mut(&mut latest) {
+            snapshot.version = self.version;
+            snapshot.universe.clone_from(&self.universe);
+            snapshot.playing = self.playing;
+            snapshot.gens_per_sec = gens_per_sec;
+        } else {
+            *latest = Arc::new(Snapshot {
+                version: self.version,
+                universe: self.universe.clone(),
+                playing: self.playing,
+                gens_per_sec,
+            });
+        }
+        drop(latest);
         self.last_publish = now;
         self.dirty = false;
     }
@@ -381,6 +391,23 @@ mod tests {
         assert_eq!((s.universe.width(), s.universe.height()), (40, 30));
         assert_eq!(s.universe.edges(), Edges::Dead);
         assert_eq!(s.universe.generation(), 0);
+    }
+
+    #[test]
+    fn publish_reuses_the_snapshot_only_when_no_reader_holds_it() {
+        let mut sim = sim();
+        blinker(&mut sim);
+        let ptr = Arc::as_ptr(&sim.snapshot());
+        // The temporary above is dropped, so the buffers are reused.
+        sim.handle(Command::Step, Duration::ZERO);
+        let held = sim.snapshot();
+        assert_eq!(Arc::as_ptr(&held), ptr);
+        assert_eq!(held.universe.generation(), 1);
+        // A reader holds the snapshot: it stays intact and a new one is made.
+        sim.handle(Command::Step, Duration::ZERO);
+        assert_ne!(Arc::as_ptr(&sim.snapshot()), ptr);
+        assert_eq!(held.universe.generation(), 1);
+        assert_eq!(sim.snapshot().universe.generation(), 2);
     }
 
     #[test]
