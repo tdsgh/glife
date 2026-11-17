@@ -21,7 +21,7 @@ saved at each step of the way.
 | # | Phase | Status | Phase document |
 |---|---|---|---|
 | 1 | Classic Life | Done | [glife-phase-1.md](glife-phase-1.md) |
-| 2 | Patterns | Planned | — |
+| 2 | Patterns | In progress | [glife-phase-2.md](glife-phase-2.md) |
 | 3 | Non-square tilings | Planned | — |
 | 4 | Closed surfaces | Planned | — |
 | 5 | 3D universes | Planned | — |
@@ -59,20 +59,27 @@ Conway's Game of Life on a bounded square grid, fully interactive.
 Working with patterns rather than single cells.
 
 - **In.** A built-in library of well-known patterns (still lifes, oscillators,
-  spaceships, guns), placed by clicking. Select a region; copy, cut, paste,
-  rotate and flip it. Undo and redo for edits. Save and open universes. Import
-  and export RLE, the text format the Life community uses to share patterns,
-  including pasting RLE from the clipboard. Colouring cells by an attribute,
-  starting with age: how many generations a live cell has survived, with an
-  optional fading trail after death.
-- **Out.** Online pattern catalogues; pattern search and analysis.
+  spaceships, guns, methuselahs), placed by clicking. A personal pattern
+  library next to it, kept on the operator's machine: save a selection as a
+  named pattern, add and edit a comment on it, rename or delete it, and paste
+  it into any universe like a built-in pattern. Select a region; copy, cut,
+  paste and flip it. Undo and redo for edits made while paused. Save and open
+  universes. Import and export RLE, the text format the Life community uses to
+  share patterns, including pasting RLE from the clipboard. Coloring cells by
+  an attribute, starting with age: how many generations a live cell has
+  survived, with an optional fading trail after death. Color palettes of 16,
+  32 or 256 colors.
+- **Out.** Online pattern catalogs; pattern search and analysis. Palettes
+  larger than 256 colors.
+- **Note.** Larger palettes may be needed later; the palette size is not fixed
+  for good.
 
 ### Phase 3 — Non-square tilings
 
 The same experience on grids whose cells are not squares.
 
 - **In.** Hexagonal and triangular grids, chosen when a universe is created.
-  Each tiling has its own neighbourhood and a default rule suited to it. Every
+  Each tiling has its own neighborhood and a default rule suited to it. Every
   tool from Phases 1–2 works on these grids: drawing, selection, the pattern
   library, saving and opening.
 - **Out.** Aperiodic tilings such as Penrose (see Open questions).
@@ -92,7 +99,7 @@ The same experience on grids whose cells are not squares.
 - **Out.** Surfaces with handles beyond the torus; surfaces that change shape
   while running.
 - **Constraint.** A sphere or a cube cannot be covered by identical cells that
-  all have the same number of neighbours. At a cube's corners three squares
+  all have the same number of neighbors. At a cube's corners three squares
   meet instead of four; a sphere always needs a few cells of a different
   shape. The rule must say what happens at those cells, and patterns crossing
   them behave differently from patterns on a flat grid.
@@ -102,7 +109,7 @@ The same experience on grids whose cells are not squares.
 Life in a bounded cubic 3D grid.
 
 - **In.** A cubic grid of a chosen size, with wrapping or dead edges. Life-like
-  3D rules (birth and survival counts over the 26 neighbours), with a few
+  3D rules (birth and survival counts over the 26 neighbors), with a few
   well-known 3D rules as presets. The 3D camera from Phase 4. A slice
   view that shows one layer at a time; cells are edited in the slice. Play and
   step as in 2D. Saving and opening 3D universes.
@@ -116,8 +123,8 @@ birth/survival counts.
 - **In.** A rule editor for Life-like birth/survival rules on every geometry,
   with presets (HighLife, Seeds, Day & Night and others). Multi-state
   "Generations" rules, where dying cells fade through extra states, each state
-  with its own colour. Changing the rule of a universe while it runs.
-- **Candidate.** Larger than Life: neighbourhoods with a radius greater than one,
+  with its own color. Changing the rule of a universe while it runs.
+- **Candidate.** Larger than Life: neighborhoods with a radius greater than one,
   on the square grid.
 - **Note.** Phases 3 to 5 already need a rule per geometry. This phase makes
   that rule editable and adds the new families.
@@ -151,7 +158,7 @@ A square 2D universe with no edges.
 - **Large grids on screen.** A zoomed-out view of millions of cells needs a
   different way of drawing than a zoomed-in view of individual cells.
 - **Irregular cells on closed surfaces.** Cells with an unusual number of
-  neighbours change how rules behave locally; a rule tuned for flat grids may
+  neighbors change how rules behave locally; a rule tuned for flat grids may
   die out or explode around them.
 - **Editing in 3D.** Pointing at one cell inside a 3D block is hard; the slice
   view is the planned answer.
@@ -179,7 +186,7 @@ A square 2D universe with no edges.
 
 - Continuous automata (Lenia, SmoothLife).
 - A browser version of the app; the engine runs in the desktop backend.
-- Online pattern catalogues and multi-user features.
+- Online pattern catalogs and multi-user features.
 
 ## Keeping this file current
 
