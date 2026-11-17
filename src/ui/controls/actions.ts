@@ -1,7 +1,7 @@
 import * as backend from "../backend";
 import * as tools from "../edit/tools";
 import { decodePattern } from "../frame";
-import { densityValue, getState, setEdit, setNotice } from "../state";
+import { densityValue, getState, requestFit, setEdit, setFileName, setNewDialog, setNotice } from "../state";
 
 export const togglePlay = () => (getState().header?.playing ? backend.pause() : backend.play());
 export const stepOnce = () => {
@@ -79,3 +79,61 @@ export async function paste() {
     fail(e);
   }
 }
+
+/** Where `info` came from: shows its notices, or the error that stopped it. */
+const startPlacingFrom = async (pending: Promise<backend.PendingInfo | null>) => {
+  try {
+    const info = await pending;
+    if (!info) return;
+    await beginPlacing();
+    if (info.notices?.length) setNotice(info.notices.join(" "));
+  } catch (e) {
+    fail(e);
+  }
+};
+
+/** Starts placing a library entry, or the pending pattern. */
+export const placeSource = (source: backend.Source) => startPlacingFrom(backend.beginPlace(source));
+
+/** New: asks about unsaved changes, then opens the dialog. */
+export async function newUniverse() {
+  try {
+    if (await backend.confirmDiscard()) setNewDialog(true);
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** Open: asks about unsaved changes, then the file dialog; ends placing and the selection and fits the view. */
+export async function openFile() {
+  try {
+    if (!(await backend.confirmDiscard())) return;
+    const opened = await backend.open();
+    if (!opened) return;
+    setFileName(opened.fileName);
+    resetEdit();
+    requestFit();
+    if (opened.notices?.length) setNotice(opened.notices.join(" "));
+  } catch (e) {
+    fail(e);
+  }
+}
+
+const saved = async (save: () => Promise<string | null>) => {
+  try {
+    const name = await save();
+    if (name !== null) setFileName(name);
+  } catch (e) {
+    fail(e);
+  }
+};
+export const save = () => saved(backend.save);
+export const saveAs = () => saved(backend.saveAs);
+
+export const importRle = () => startPlacingFrom(backend.importRle());
+
+/** Exports the selection if there is one, else the whole universe. */
+export const exportRle = () => {
+  const { selection } = edit();
+  backend.exportRle(selection ? { selection } : "universe").catch(fail);
+};

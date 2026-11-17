@@ -123,6 +123,8 @@ it before anything else is built on top of it.
   deficiencies, with its darkest end trimmed. **Heat** runs white → yellow →
   orange → red. **Ice** runs white → cyan → blue → violet. Every color contrasts
   with the dead-cell color.
+- **Age 0 is white in every palette.** Entry 0 is white; the palette's stops
+  fill entries 1 to N − 1.
 - Coloring mode, palette, palette size, trail on or off, and trail length
   (1–100, default 10) are kept in `localStorage`, read and written inside
   `try`/`catch`, and never stored in a universe file.
@@ -282,6 +284,7 @@ notices.
 | WP7 Selection, placing and undo in the UI | `ui` | sonnet | test | yes, with WP6 |
 | WP8 Files, clipboard, menus | `host` | sonnet | test | yes, with WP9 |
 | WP9 Library panels and file actions | `ui` | sonnet | human | yes, with WP8 |
+| WP9b UI polish | `ui` | sonnet | human | — |
 | WP10 Docs and rules | `kit:docs-writer` | sonnet | human | — |
 
 Test command for every `test` gate: `cargo test --workspace && npm test`.
@@ -702,6 +705,44 @@ The menus, accelerators, `menu` events, the Edit-menu swap and
 ### Human gate — macOS click-through
 Run every item in Verification on macOS with `npm run tauri dev`, except the
 performance items, which need the release build as in WP3.
+
+## WP9b — UI polish
+> `agent: ui` · `model: sonnet` · `gate: human` · `reads: Decisions taken › Palettes and view settings, Interaction`
+
+Changes from the WP9 click-through.
+
+### `src/ui/controls/Toolbar.tsx`
+- Two rows. Paired actions stack vertically: Play / Step, Undo / Redo,
+  Draw / Select, Cut / Copy, Paste / Delete, Flip H / Flip V.
+- Cut, Copy, Paste and Delete buttons, enabled by the same flags as the Edit
+  menu.
+- *Or | Copy* is one segmented switch, always shown, enabled while placing.
+- Every button with an on/off state (Draw, Select, Play, Trail, Library, the
+  *Or | Copy* switch) shows its active state.
+
+### `src/ui/library/LibraryPanel.tsx`
+- Clicking a row places its pattern; the Place button goes. An entry larger
+  than the grid is not clickable and keeps its note.
+- Copy to personal is an icon button with a tooltip.
+- Rename and Edit comment edit in place in the row: Enter or leaving the field
+  saves, Escape cancels. A taken name offers Replace or Choose another name in
+  the row.
+- Problem files are listed at the top of the panel when there are any.
+
+### `src/ui/color/palettes.ts`, `Legend.tsx`
+Age 0 is white in every palette, per Decisions taken › Palettes; the legend
+shows it.
+
+### Tests
+- Every palette at every size has entry 0 white and entry 1 equal to its
+  first stop.
+- A row click begins placing; an oversized row does not.
+- In-place rename: Enter saves, Escape cancels, a taken name offers Replace.
+- Toolbar buttons expose their state (`aria-pressed`).
+
+### Human gate — macOS click-through
+The session rebuilds the release binary. The person checks each change above
+by eye and answers yes or no per item.
 
 ## WP10 — Docs and rules
 > `agent: kit:docs-writer` · `gate: human`

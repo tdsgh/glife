@@ -1,19 +1,20 @@
 import { useState } from "react";
-import { clear, setEdges, setSpeed as sendSpeed } from "../backend";
-import { requestFit, setDensity, setSpeed, SPEEDS, useUiState } from "../state";
+import { clear, librarySave, setEdges, setSpeed as sendSpeed } from "../backend";
+import { bumpLibrary, requestFit, setDensity, setLibraryOpen, setNewDialog, setSpeed, SPEEDS, useUiState } from "../state";
+import { SavePatternDialog } from "../library/SavePatternDialog";
 import { ColorControls } from "../color/ColorControls";
 import { NewUniverseDialog } from "./NewUniverseDialog";
-import { flipH, flipV, randomFill, redo, setPasteMode, setTool, stepOnce, togglePlay, undo } from "./actions";
+import { flipH, flipV, newUniverse, randomFill, redo, setPasteMode, setTool, stepOnce, togglePlay, undo } from "./actions";
 
 export function Toolbar() {
-  const { header, speed, density, edit } = useUiState();
-  const [dialog, setDialog] = useState(false);
+  const { header, speed, density, edit, libraryOpen, newDialog } = useUiState();
+  const [saveDialog, setSaveDialog] = useState(false);
   const playing = header?.playing ?? false;
   const edges = header?.edges ?? "wrap";
 
   return (
     <div role="toolbar" style={{ position: "relative", display: "flex", gap: 8, alignItems: "center", padding: 8, background: "#1b1f26", color: "#e8f1ff" }}>
-      <button onClick={() => setDialog(true)}>New universe…</button>
+      <button onClick={() => void newUniverse()}>New universe…</button>
       <button onClick={() => void togglePlay()}>{playing ? "Pause" : "Play"}</button>
       <button onClick={stepOnce} disabled={playing}>Step</button>
       <label>
@@ -49,9 +50,19 @@ export function Toolbar() {
           <button onClick={() => setPasteMode("copy")} aria-pressed={edit.mode === "copy"}>Copy</button>
         </>
       )}
+      <button onClick={() => setSaveDialog(true)} disabled={!edit.placing && !edit.selection}>Save to library…</button>
+      <button onClick={() => setLibraryOpen(!libraryOpen)} aria-pressed={libraryOpen}>Library</button>
       <button onClick={requestFit}>Fit</button>
       <ColorControls />
-      {dialog && <NewUniverseDialog onClose={() => setDialog(false)} />}
+      {newDialog && <NewUniverseDialog onClose={() => setNewDialog(false)} />}
+      {saveDialog && (
+        <SavePatternDialog title="Save to library" fields={{ name: true, comment: true }} onClose={() => setSaveDialog(false)}
+          submit={async (name, comment, replace) => {
+            const reply = await librarySave(edit.placing ? "pending" : { selection: edit.selection! }, name, comment || undefined, replace);
+            if (!reply || !reply.nameTaken) bumpLibrary();
+            return reply;
+          }} />
+      )}
     </div>
   );
 }

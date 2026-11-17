@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { newUniverse, type Edges } from "../backend";
 import { resetEdit } from "./actions";
-import { requestFit } from "../state";
+import { requestFit, setFileName } from "../state";
 
 const MIN = 3;
 const MAX = 2048;
@@ -19,6 +19,7 @@ export function NewUniverseDialog({ onClose }: { onClose: () => void }) {
     if (w === null || h === null) return;
     await newUniverse(w, h, edges);
     resetEdit();
+    setFileName(null);
     requestFit();
     onClose();
   };

@@ -1,0 +1,169 @@
+import { useEffect, useState } from "react";
+import * as backend from "../backend";
+import type { BuiltinEntry, LibraryList, PersonalEntry, Source } from "../backend";
+import { placeSource } from "../controls/actions";
+import { bumpLibrary, setNotice, useUiState } from "../state";
+import { PatternPreview } from "./PatternPreview";
+import { SavePatternDialog } from "./SavePatternDialog";
+
+const CATEGORY_NAMES: Record<BuiltinEntry["category"], string> = {
+  "still-life": "Still lifes",
+  oscillator: "Oscillators",
+  spaceship: "Spaceships",
+  gun: "Guns",
+  methuselah: "Methuselahs",
+};
+const EMPTY: LibraryList = { builtin: [], personal: [], problems: [] };
+const fail = (e: unknown) => setNotice(String(e));
+const matches = (name: string, filter: string) => name.toLowerCase().includes(filter.trim().toLowerCase());
+const date = (rfc3339: string) => new Date(rfc3339).toLocaleString();
+
+type Selected = { kind: "builtin" | "personal"; key: string } | null;
+type Pending =
+  | { kind: "copy"; entry: BuiltinEntry }
+  | { kind: "rename"; entry: PersonalEntry }
+  | { kind: "comment"; entry: PersonalEntry };
+
+export function LibraryPanel() {
+  const { header, libraryRev } = useUiState();
+  const [list, setList] = useState<LibraryList>(EMPTY);
+  const [filter, setFilter] = useState("");
+  const [selected, setSelected] = useState<Selected>(null);
+  const [dialog, setDialog] = useState<Pending | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    backend.libraryList().then((l) => live && setList(l)).catch(fail);
+    return () => {
+      live = false;
+    };
+  }, [libraryRev]);
+
+  const gridW = header?.gridWidth ?? 0;
+  const gridH = header?.gridHeight ?? 0;
+  const tooBig = (e: { width: number; height: number }) => e.width > gridW || e.height > gridH;
+
+  const stats = (e: BuiltinEntry | PersonalEntry) => {
+    const { period, speed } = e as Partial<BuiltinEntry>;
+    return (
+    <div style={{ fontSize: 12, opacity: 0.8 }}>
+      {e.width} × {e.height} · {e.live} live
+      {period != null && ` · period ${period}`}
+      {speed && ` · ${speed}`}
+    </div>
+    );
+  };
+
+  const placeButton = (e: BuiltinEntry | PersonalEntry, source: Source) => (
+    <>
+      <button onClick={() => void placeSource(source)} disabled={tooBig(e)}>Place</button>
+      {tooBig(e) && (
+        <span style={{ marginLeft: 6, color: "#ffe9a8" }}>
+          Larger than the universe ({gridW} × {gridH})
+        </span>
+      )}
+    </>
+  );
+
+  const builtin = list.builtin.filter((e) => matches(e.name, filter));
+  const personal = list.personal.filter((e) => matches(e.name, filter));
+  const categories = [...new Set(builtin.map((e) => e.category))];
+
+  const row = (kind: "builtin" | "personal", key: string, source: Source, e: BuiltinEntry | PersonalEntry, details: React.ReactNode) => {
+    const open = selected?.kind === kind && selected.key === key;
+    return (
+      <li key={key} style={{ padding: 4, borderBottom: "1px solid #2c323c", background: open ? "#262c36" : undefined }}>
+        <div style={{ display: "flex", gap: 8, cursor: "pointer" }} onClick={() => setSelected(open ? null : { kind, key })}>
+          <PatternPreview source={source} />
+          <div>
+            <strong>{e.name}</strong>
+            {stats(e)}
+          </div>
+        </div>
+        {open && <div style={{ marginTop: 4 }}>{details}</div>}
+      </li>
+    );
+  };
+
+  const submitFor = (d: Pending) => async (name: string, comment: string, replace: boolean) => {
+    const reply =
+      d.kind === "copy" ? await backend.libraryCopyBuiltin(d.entry.id, name, replace)
+      : d.kind === "rename" ? await backend.libraryRename(d.entry.name, name, replace)
+      : await backend.librarySetComment(d.entry.name, comment).then(() => null);
+    if (!reply || !reply.nameTaken) {
+      bumpLibrary();
+      if (d.kind === "rename") setSelected({ kind: "personal", key: name });
+    }
+    return reply;
+  };
+
+  return (
+    <aside aria-label="Pattern library"
+      style={{ width: 300, overflowY: "auto", background: "#1b1f26", color: "#e8f1ff", borderLeft: "1px solid #2c323c", position: "relative" }}>
+      <input type="search" aria-label="Filter patterns" placeholder="Filter by name" value={filter}
+        onChange={(e) => setFilter(e.target.value)} style={{ margin: 8, width: "calc(100% - 16px)" }} />
+
+      <h3 style={{ margin: "8px" }}>Built-in</h3>
+      {categories.map((c) => (
+        <section key={c} aria-label={CATEGORY_NAMES[c]}>
+          <h4 style={{ margin: "4px 8px" }}>{CATEGORY_NAMES[c]}</h4>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {builtin.filter((e) => e.category === c).map((e) =>
+              row("builtin", e.id, { builtin: e.id }, e, (
+                <>
+                  <p style={{ margin: "4px 0" }}>{e.description}</p>
+                  {placeButton(e, { builtin: e.id })}{" "}
+                  <button onClick={() => setDialog({ kind: "copy", entry: e })}>Copy to personal</button>
+                </>
+              )))}
+          </ul>
+        </section>
+      ))}
+
+      <h3 style={{ margin: "8px" }}>
+        Personal{" "}
+        <button onClick={() => void backend.libraryShowFolder().catch(fail)}>Show folder</button>
+      </h3>
+      {list.personal.length === 0 && (
+        <p style={{ margin: 8 }}>
+          No personal patterns yet. Select an area and choose Save to library, or copy a built-in pattern.
+        </p>
+      )}
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {personal.map((e) =>
+          row("personal", e.name, { personal: e.name }, e, (
+            <>
+              {e.comment && <p style={{ margin: "4px 0", whiteSpace: "pre-wrap" }}>{e.comment}</p>}
+              <div style={{ fontSize: 12, opacity: 0.8 }}>Saved {date(e.created)} · changed {date(e.changed)}</div>
+              {placeButton(e, { personal: e.name })}{" "}
+              <button onClick={() => setDialog({ kind: "rename", entry: e })}>Rename</button>{" "}
+              <button onClick={() => setDialog({ kind: "comment", entry: e })}>Edit comment</button>{" "}
+              <button onClick={() => void backend.libraryDelete(e.name).then((gone) => gone && bumpLibrary()).catch(fail)}>Delete</button>{" "}
+              <button onClick={() => void backend.exportRle({ personal: e.name }).catch(fail)}>Export</button>
+            </>
+          )))}
+      </ul>
+
+      {list.problems.length > 0 && (
+        <section aria-label="Problem files" style={{ margin: 8, color: "#ffe9a8" }}>
+          <h4 style={{ margin: "4px 0" }}>Files that could not be used</h4>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {list.problems.map((p) => (
+              <li key={p.file}>{p.file}: {p.reason}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {dialog && (
+        <SavePatternDialog
+          title={dialog.kind === "copy" ? "Copy to personal" : dialog.kind === "rename" ? "Rename pattern" : "Edit comment"}
+          fields={{ name: dialog.kind !== "comment", comment: dialog.kind === "comment" }}
+          initialName={dialog.entry.name}
+          initialComment={dialog.kind === "comment" ? dialog.entry.comment : ""}
+          submit={submitFor(dialog)}
+          onClose={() => setDialog(null)} />
+      )}
+    </aside>
+  );
+}

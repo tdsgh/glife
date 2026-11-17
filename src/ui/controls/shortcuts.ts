@@ -1,13 +1,19 @@
 import { useEffect } from "react";
 import * as tools from "../edit/tools";
 import { getState, requestFit } from "../state";
-import { dispatch, randomFill, stepOnce, togglePlay } from "./actions";
+import { dispatch, randomFill, redo, stepOnce, togglePlay } from "./actions";
 
-const isTextField = (t: EventTarget | null) =>
+export const isTextField = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** Enter play/pause, N step, R random fill, F fit, and the editing keys of `tools.key` (S, D, H, V, Escape, Delete, Backspace). Returns whether the key was handled. */
 export function handleShortcut(e: KeyboardEvent): boolean {
+  // The web view takes Cmd+Shift+Z before the Edit menu sees it on macOS; when the menu does handle it, this event never arrives.
+  if (e.metaKey && e.shiftKey && e.code === "KeyZ" && !isTextField(e.target)) {
+    redo();
+    e.preventDefault();
+    return true;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey || isTextField(e.target)) return false;
   switch (e.key) {
     case "Enter":

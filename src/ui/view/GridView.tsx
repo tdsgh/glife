@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { edit, fetchFrame, NO_VERSION, type Region } from "../backend";
 import { dispatch } from "../controls/actions";
+import { isTextField } from "../controls/shortcuts";
 import * as tools from "../edit/tools";
 import { getState, onFit, setHeader, wantedLayers } from "../state";
 import { paletteColors } from "../color/palettes";
@@ -367,6 +368,7 @@ export function GridView() {
     const onContextMenu = (e: Event) => e.preventDefault();
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isTextField(e.target)) return;
       if (e.code === "Space") {
         spaceHeld = true;
         e.preventDefault();

@@ -41,11 +41,17 @@ export interface UiState {
   edit: EditState;
   /** One line for an error or notice; null when there is none. */
   notice: string | null;
+  /** Name of the file the universe was last saved to or opened from; null is Untitled. */
+  fileName: string | null;
+  libraryOpen: boolean;
+  /** Bumped when a library changes, so the open panel reloads. */
+  libraryRev: number;
+  newDialog: boolean;
 }
 
 export const SPEEDS: (number | null)[] = [1, 2, 5, 10, 15, 30, 60, 120, 240, null];
 
-let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings(), edit: initialEdit(), notice: null };
+let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings(), edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false };
 const listeners = new Set<() => void>();
 const fitListeners = new Set<() => void>();
 
@@ -81,6 +87,10 @@ export function setHeader(header: FrameHeader) {
 export const setSpeed = (speed: number | null) => set({ speed });
 export const setEdit = (edit: EditState) => set({ edit });
 export const setNotice = (notice: string | null) => set({ notice });
+export const setFileName = (fileName: string | null) => set({ fileName });
+export const setLibraryOpen = (libraryOpen: boolean) => set({ libraryOpen });
+export const bumpLibrary = () => set({ libraryRev: state.libraryRev + 1 });
+export const setNewDialog = (newDialog: boolean) => set({ newDialog });
 export const setDensity = (density: string) => set({ density });
 
 export function setSettings(patch: Partial<ViewSettings>) {
@@ -113,6 +123,6 @@ export function onFit(l: () => void) {
 }
 
 export function resetUiState() {
-  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS }, edit: initialEdit(), notice: null };
+  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS }, edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false };
   listeners.forEach((l) => l());
 }

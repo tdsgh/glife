@@ -28,6 +28,7 @@ beforeEach(() => {
   resetUiState();
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
+    return cmd === "confirm_discard" ? true : undefined;
   });
 });
 afterEach(() => {
@@ -103,6 +104,7 @@ test("new universe dialog creates, then fits", async () => {
   const off = onFit(fit);
   render(<Toolbar />);
   click("New universe…");
+  await screen.findByLabelText("Width");
   fireEvent.change(screen.getByLabelText("Width"), { target: { value: "300" } });
   fireEvent.change(screen.getByLabelText("Height"), { target: { value: "40" } });
   fireEvent.change(screen.getByLabelText("Dialog edges"), { target: { value: "dead" } });
@@ -161,6 +163,14 @@ test("shortcuts are ignored in text fields and with modifiers", () => {
   fireEvent.keyDown(window, { key: "r", ctrlKey: true });
   expect(calls).toEqual([]);
   expect(handleShortcut(new KeyboardEvent("keydown", { key: "x" }))).toBe(false);
+});
+
+test("Cmd+Shift+Z redoes outside text fields", async () => {
+  render(<Keys />);
+  fireEvent.keyDown(screen.getByLabelText("text"), { key: "Z", code: "KeyZ", metaKey: true, shiftKey: true });
+  expect(calls).toEqual([]);
+  fireEvent.keyDown(window, { key: "Z", code: "KeyZ", metaKey: true, shiftKey: true });
+  await waitFor(() => expect(sent()).toEqual(["redo"]));
 });
 
 test("status bar renders a decoded header", async () => {
