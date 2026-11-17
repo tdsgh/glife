@@ -44,7 +44,10 @@ pub fn encode(
     let generation = u.generation();
     words.extend([
         FORMAT_VERSION,
-        snapshot.playing as u32,
+        snapshot.playing as u32
+            | (snapshot.can_undo as u32) << 1
+            | (snapshot.can_redo as u32) << 2
+            | (snapshot.dirty as u32) << 3,
         version as u32,
         (version >> 32) as u32,
         generation as u32,
@@ -90,7 +93,16 @@ mod tests {
         for (x, y) in [(0, 0), (3, 0), (31, 0), (32, 0), (63, 0), (1, 1), (40, 1)] {
             universe.set(x, y, true);
         }
-        Snapshot { version: 0x1_0000_0005, universe, playing: true, gens_per_sec: 12.5 }
+        Snapshot {
+            version: 0x1_0000_0005,
+            universe,
+            playing: true,
+            gens_per_sec: 12.5,
+            revision: 1,
+            dirty: false,
+            can_undo: false,
+            can_redo: false,
+        }
     }
 
     /// The layout written out by hand, independent of the encoder.
@@ -140,6 +152,21 @@ mod tests {
         assert_eq!(w[15..18], [1, 0, 0]);
     }
 
+    #[test]
+    fn flag_bits_carry_undo_redo_and_unsaved_changes() {
+        let flags = |playing, can_undo, can_redo, dirty| {
+            let snapshot = Snapshot { playing, can_undo, can_redo, dirty, ..snapshot() };
+            let bytes = encode(&snapshot, 0.0, 0.0, 64.0, 2.0, 0, 0);
+            u32::from_le_bytes(bytes[4..8].try_into().unwrap())
+        };
+        assert_eq!(flags(false, false, false, false), 0);
+        assert_eq!(flags(true, false, false, false), 1);
+        assert_eq!(flags(false, true, false, false), 2);
+        assert_eq!(flags(false, false, true, false), 4);
+        assert_eq!(flags(false, false, false, true), 8);
+        assert_eq!(flags(true, true, true, true), 15);
+    }
+
     /// A 64 x 3 universe with a block aged 305 and another that loses two
     /// cells to overpopulation, so the layers hold an age above 255 and
     /// trail counters of 1, 2 and 3.
@@ -162,7 +189,16 @@ mod tests {
         for _ in 0..3 {
             universe.step();
         }
-        Snapshot { version: 7, universe, playing: false, gens_per_sec: 0.0 }
+        Snapshot {
+            version: 7,
+            universe,
+            playing: false,
+            gens_per_sec: 0.0,
+            revision: 1,
+            dirty: false,
+            can_undo: false,
+            can_redo: false,
+        }
     }
 
     /// The layered frame written out by hand. Ages: the block is 308, capped
@@ -222,7 +258,16 @@ mod tests {
         for _ in 0..10 {
             universe.step();
         }
-        let snapshot = Snapshot { version: 2, universe, playing: true, gens_per_sec: 0.0 };
+        let snapshot = Snapshot {
+            version: 2,
+            universe,
+            playing: true,
+            gens_per_sec: 0.0,
+            revision: 1,
+            dirty: false,
+            can_undo: false,
+            can_redo: false,
+        };
         let runs = 20;
         let start = std::time::Instant::now();
         let mut len = 0;

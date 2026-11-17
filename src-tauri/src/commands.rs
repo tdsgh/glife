@@ -1,23 +1,42 @@
 //! Tauri commands. Each forwards to the simulation thread's queue, except
-//! `frame`, which reads the latest snapshot.
+//! `frame` and `pending_cells`, which only read.
 
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
-use glife_engine::{Edges, MAX_SIDE, MIN_SIDE};
+use glife_engine::{Axis, Edges, PasteMode, Pattern, PlaceError, Rect, MAX_SIDE, MIN_SIDE};
 use tauri::ipc::Response;
 use tauri::State;
 
 use crate::frame;
-use crate::sim::{os_seed, Command, Latest};
+use crate::sim::{self, os_seed, Command, Latest};
 
 pub struct Host {
     pub queue: Sender<Command>,
     pub latest: Latest,
+    /// The pattern being placed.
+    pub pending: Mutex<Option<Arc<Pattern>>>,
 }
 
 impl Host {
     fn send(&self, command: Command) -> Result<(), String> {
         self.queue.send(command).map_err(|_| "simulation thread stopped".to_string())
+    }
+
+    fn pending(&self) -> Result<Arc<Pattern>, String> {
+        self.pending.lock().unwrap().clone().ok_or_else(|| "no pattern is being placed".to_string())
+    }
+
+    /// `rect` if it lies inside the grid as of the latest snapshot.
+    fn selection(&self, rect: Rect) -> Result<Rect, String> {
+        let snapshot = self.latest.lock().unwrap().clone();
+        let u = &snapshot.universe;
+        if sim::inside(rect, u) {
+            Ok(rect)
+        } else {
+            let Rect { x, y, w, h } = rect;
+            Err(format!("selection {w} x {h} at ({x}, {y}) is outside the {} x {} grid", u.width(), u.height()))
+        }
     }
 }
 
@@ -67,9 +86,72 @@ pub fn set_edges(host: State<Host>, edges: String) -> Result<(), String> {
     host.send(Command::SetEdges(parse_edges(&edges)?))
 }
 
+/// Batches with the same `stroke` and no other command between them undo as
+/// one step; without a `stroke`, each batch is its own step.
 #[tauri::command]
-pub fn edit(host: State<Host>, cells: Vec<(u32, u32)>, alive: bool) -> Result<(), String> {
-    host.send(Command::Edit { cells, alive })
+pub fn edit(host: State<Host>, cells: Vec<(u32, u32)>, alive: bool, stroke: Option<u64>) -> Result<(), String> {
+    host.send(Command::Edit { cells, alive, stroke })
+}
+
+#[tauri::command]
+pub fn undo(host: State<Host>) -> Result<(), String> {
+    host.send(Command::Undo)
+}
+
+#[tauri::command]
+pub fn redo(host: State<Host>) -> Result<(), String> {
+    host.send(Command::Redo)
+}
+
+#[tauri::command]
+pub fn delete_selection(host: State<Host>, x: u32, y: u32, w: u32, h: u32) -> Result<(), String> {
+    host.send(Command::KillRect(host.selection(Rect { x, y, w, h })?))
+}
+
+/// `axis` is `"h"` (left to right) or `"v"` (top to bottom).
+#[tauri::command]
+pub fn flip_selection(host: State<Host>, x: u32, y: u32, w: u32, h: u32, axis: String) -> Result<(), String> {
+    let axis = match axis.as_str() {
+        "h" => Axis::Horizontal,
+        "v" => Axis::Vertical,
+        other => return Err(format!("unknown flip axis {other:?}")),
+    };
+    host.send(Command::FlipRect(host.selection(Rect { x, y, w, h })?, axis))
+}
+
+/// Stamps the pending pattern, flipped as asked, with its center cell
+/// `(⌊w/2⌋, ⌊h/2⌋)` at `(x, y)`. `mode` is `"or"` or `"copy"`.
+#[tauri::command]
+pub fn place(host: State<Host>, x: i64, y: i64, flip_h: bool, flip_v: bool, mode: String) -> Result<(), String> {
+    let mode = match mode.as_str() {
+        "or" => PasteMode::Or,
+        "copy" => PasteMode::Copy,
+        other => return Err(format!("unknown paste mode {other:?}")),
+    };
+    let mut pattern = host.pending()?;
+    if flip_h {
+        pattern = Arc::new(pattern.flipped(Axis::Horizontal));
+    }
+    if flip_v {
+        pattern = Arc::new(pattern.flipped(Axis::Vertical));
+    }
+    let (w, h) = (pattern.width(), pattern.height());
+    let grid = {
+        let snapshot = host.latest.lock().unwrap().clone();
+        (snapshot.universe.width(), snapshot.universe.height())
+    };
+    if w > grid.0 || h > grid.1 {
+        return Err(PlaceError { pattern: (w, h), grid }.to_string());
+    }
+    host.send(Command::Place { pattern, x: x - (w / 2) as i64, y: y - (h / 2) as i64, mode })
+}
+
+/// The pending pattern as a pattern buffer.
+#[tauri::command]
+pub fn pending_cells(host: State<Host>) -> Result<Response, String> {
+    let mut words = Vec::new();
+    host.pending()?.to_words(&mut words);
+    Ok(Response::new(words.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<u8>>()))
 }
 
 #[tauri::command]

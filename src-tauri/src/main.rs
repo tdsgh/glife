@@ -2,14 +2,15 @@
 
 mod commands;
 mod frame;
+mod history;
 mod sim;
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 
 fn main() {
     let sim = sim::Sim::launch(std::env::var_os("GLIFE_BENCH").is_some_and(|v| v == "1"));
     let (queue, receiver) = mpsc::channel();
-    let host = commands::Host { queue, latest: sim.latest() };
+    let host = commands::Host { queue, latest: sim.latest(), pending: Mutex::new(None) };
     std::thread::Builder::new()
         .name("simulation".into())
         .spawn(move || sim::run(sim, receiver))
@@ -25,6 +26,12 @@ fn main() {
             commands::set_speed,
             commands::set_edges,
             commands::edit,
+            commands::undo,
+            commands::redo,
+            commands::delete_selection,
+            commands::flip_selection,
+            commands::place,
+            commands::pending_cells,
             commands::clear,
             commands::random_fill,
             commands::frame,
