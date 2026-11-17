@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Loaf"
+category = "still-life"
+description = "A seven-cell still life shaped like a loaf of bread."
+rle = """
+#N Loaf
+x = 4, y = 4, rule = B3/S23
+b2o$o2bo$bobo$2bo!
+"""

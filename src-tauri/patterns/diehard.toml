@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Diehard"
+category = "methuselah"
+description = "Seven cells that vanish after 130 generations on an unbounded plane. On a bounded grid any escaping debris hits the edge or comes back, so the outcome can differ."
+rle = """
+#N Diehard
+x = 8, y = 3, rule = B3/S23
+6bo$2o$bo3b3o!
+"""

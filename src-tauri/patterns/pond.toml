@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Pond"
+category = "still-life"
+description = "An eight-cell still life: a ring around an empty center."
+rle = """
+#N Pond
+x = 4, y = 4, rule = B3/S23
+b2o$o2bo$o2bo$b2o!
+"""

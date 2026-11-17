@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Beehive"
+category = "still-life"
+description = "A six-cell still life, the second most common after the block."
+rle = """
+#N Beehive
+x = 4, y = 3, rule = B3/S23
+b2o$o2bo$b2o!
+"""

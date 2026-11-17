@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Clock"
+category = "oscillator"
+description = "A small oscillator of period 2 whose four cells turn like clock hands."
+period = 2
+rle = """
+#N Clock
+x = 4, y = 4, rule = B3/S23
+2bo$obo$bobo$bo!
+"""

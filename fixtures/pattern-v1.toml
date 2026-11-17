@@ -1,0 +1,13 @@
+format = 1
+tiling = "square"
+name = "Sample glider"
+comment = """
+Kept for tests.
+Two lines."""
+created = "2026-01-02T03:04:05Z"
+changed = "2026-02-03T04:05:06Z"
+rle = """
+#N Sample glider
+x = 3, y = 3, rule = B3/S23
+bob$2bo$3o!
+"""

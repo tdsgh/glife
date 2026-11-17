@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Figure eight"
+category = "oscillator"
+description = "Two 3 x 3 blocks touching at a corner, an oscillator of period 8."
+period = 8
+rle = """
+#N Figure eight
+x = 6, y = 6, rule = B3/S23
+3o$3o$3o$3b3o$3b3o$3b3o!
+"""

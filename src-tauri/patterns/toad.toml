@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Toad"
+category = "oscillator"
+description = "A six-cell oscillator of period 2: two rows of three, offset by one."
+period = 2
+rle = """
+#N Toad
+x = 4, y = 2, rule = B3/S23
+b3o$3o!
+"""

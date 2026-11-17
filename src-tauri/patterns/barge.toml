@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Barge"
+category = "still-life"
+description = "A six-cell still life shaped like a long boat."
+rle = """
+#N Barge
+x = 4, y = 4, rule = B3/S23
+bo$obo$bobo$2bo!
+"""

@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Rabbits"
+category = "methuselah"
+description = "Nine cells that grow for 17331 generations on an unbounded plane, throwing off gliders and spaceships. On a bounded grid the escaping debris hits the edge or comes back, so the outcome differs."
+rle = """
+#N Rabbits
+x = 7, y = 3, rule = B3/S23
+o3b3o$3o2bo$bo!
+"""

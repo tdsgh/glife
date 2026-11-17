@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Blinker"
+category = "oscillator"
+description = "Three cells in a row: the smallest oscillator, flipping between horizontal and vertical."
+period = 2
+rle = """
+#N Blinker
+x = 3, y = 1, rule = B3/S23
+3o!
+"""

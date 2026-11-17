@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Pi-heptomino"
+category = "methuselah"
+description = "Seven cells that settle after 173 generations on an unbounded plane. On a bounded grid any escaping debris hits the edge or comes back, so the outcome can differ."
+rle = """
+#N Pi-heptomino
+x = 3, y = 3, rule = B3/S23
+3o$obo$obo!
+"""

@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Eater"
+category = "still-life"
+description = "A seven-cell still life that, hit by a glider, eats it and repairs itself."
+rle = """
+#N Eater
+x = 4, y = 4, rule = B3/S23
+2o$obo$2bo$2b2o!
+"""

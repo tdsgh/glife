@@ -1,0 +1,13 @@
+format = 1
+tiling = "square"
+name = "Glider"
+category = "spaceship"
+description = "The smallest spaceship, crossing the grid diagonally at c/4. Period 4."
+period = 4
+dx = 1
+dy = 1
+rle = """
+#N Glider
+x = 3, y = 3, rule = B3/S23
+bo$2bo$3o!
+"""

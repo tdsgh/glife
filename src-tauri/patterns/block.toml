@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Block"
+category = "still-life"
+description = "The smallest still life: four cells in a square."
+rle = """
+#N Block
+x = 2, y = 2, rule = B3/S23
+2o$2o!
+"""

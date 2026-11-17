@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Ship"
+category = "still-life"
+description = "A six-cell still life, the boat with one more cell."
+rle = """
+#N Ship
+x = 3, y = 3, rule = B3/S23
+2o$obo$b2o!
+"""

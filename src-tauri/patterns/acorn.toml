@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Acorn"
+category = "methuselah"
+description = "Seven cells that take 5206 generations to settle on an unbounded plane. On a bounded grid the escaping gliders hit the edge or come back, so the outcome differs."
+rle = """
+#N Acorn
+x = 7, y = 3, rule = B3/S23
+bo$3bo$2o2b3o!
+"""

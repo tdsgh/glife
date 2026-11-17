@@ -2,7 +2,17 @@
 
 mod commands;
 mod frame;
+#[allow(dead_code)] // wired to commands in WP8
+mod glife_file;
 mod history;
+#[allow(dead_code)]
+mod library;
+#[allow(dead_code)]
+mod open_rle;
+#[allow(dead_code)]
+mod pattern_file;
+#[allow(dead_code)]
+mod rle;
 mod sim;
 
 use std::sync::{mpsc, Mutex};

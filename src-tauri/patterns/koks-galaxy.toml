@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Kok's galaxy"
+category = "oscillator"
+description = "A symmetric oscillator of period 8, built from two interlocking rings of blocks."
+period = 8
+rle = """
+#N Kok's galaxy
+x = 9, y = 9, rule = B3/S23
+6ob2o$6ob2o$7b2o$2o5b2o$2o5b2o$2o5b2o$2o$2ob6o$2ob6o!
+"""

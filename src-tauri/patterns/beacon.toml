@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Beacon"
+category = "oscillator"
+description = "Two blocks touching at a corner; the corner cells blink. Period 2."
+period = 2
+rle = """
+#N Beacon
+x = 4, y = 4, rule = B3/S23
+2o$2o$2b2o$2b2o!
+"""

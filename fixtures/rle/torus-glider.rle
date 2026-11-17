@@ -1,0 +1,4 @@
+#CXRLE Pos=0,0 Gen=0
+#N Glider on a torus
+x = 3, y = 3, rule = B3/S23:T10,8
+bob$2bo$3o!

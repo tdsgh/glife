@@ -1,0 +1,12 @@
+format = 1
+tiling = "square"
+name = "Pulsar"
+category = "oscillator"
+description = "The most common period-3 oscillator, 48 cells in four-fold symmetry."
+period = 3
+rle = """
+#N Pulsar
+x = 13, y = 13, rule = B3/S23
+2b3o3b3o2$o4bobo4bo$o4bobo4bo$o4bobo4bo$2b3o3b3o2$2b3o3b3o$o4bobo4bo$o
+4bobo4bo$o4bobo4bo2$2b3o3b3o!
+"""

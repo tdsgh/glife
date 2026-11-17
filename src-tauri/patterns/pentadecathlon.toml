@@ -1,0 +1,11 @@
+format = 1
+tiling = "square"
+name = "Pentadecathlon"
+category = "oscillator"
+description = "A period-15 oscillator that grows from a row of ten cells."
+period = 15
+rle = """
+#N Pentadecathlon
+x = 10, y = 3, rule = B3/S23
+2bo4bo$2ob4ob2o$2bo4bo!
+"""

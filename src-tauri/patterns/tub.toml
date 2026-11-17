@@ -1,0 +1,10 @@
+format = 1
+tiling = "square"
+name = "Tub"
+category = "still-life"
+description = "A four-cell still life: a diamond with an empty center."
+rle = """
+#N Tub
+x = 3, y = 3, rule = B3/S23
+bo$obo$bo!
+"""

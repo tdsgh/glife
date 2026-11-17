@@ -1,0 +1,13 @@
+format = 1
+tiling = "square"
+name = "Heavyweight spaceship"
+category = "spaceship"
+description = "The heavyweight spaceship: moves orthogonally at c/2, period 4."
+period = 4
+dx = -2
+dy = 0
+rle = """
+#N Heavyweight spaceship
+x = 7, y = 5, rule = B3/S23
+3b2o$bo4bo$o$o5bo$6o!
+"""

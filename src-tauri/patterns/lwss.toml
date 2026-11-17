@@ -1,0 +1,13 @@
+format = 1
+tiling = "square"
+name = "Lightweight spaceship"
+category = "spaceship"
+description = "The lightweight spaceship: moves orthogonally at c/2, period 4."
+period = 4
+dx = -2
+dy = 0
+rle = """
+#N Lightweight spaceship
+x = 5, y = 4, rule = B3/S23
+bo2bo$o$o3bo$4o!
+"""
