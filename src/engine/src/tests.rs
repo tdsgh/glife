@@ -38,6 +38,28 @@ fn assert_storage_consistent(u: &Universe) {
     }
     let popcount: u32 = u.grid.cells.iter().map(|w| w.count_ones()).sum();
     assert_eq!(u.live_count(), popcount);
+    for y in 0..u.height() {
+        for x in 0..u.width() {
+            let i = (y * u.width() + x) as usize;
+            let trail = u.trail[i];
+            let marked =
+                (u.trailing[y as usize * u.grid.words_per_row + x as usize / 64] >> (x % 64)) & 1
+                    == 1;
+            assert_eq!(
+                marked,
+                (1..=254).contains(&trail),
+                "trailing bit at ({x}, {y})"
+            );
+            assert!(
+                !(u.get(x, y) && trail != 0),
+                "live cell ({x}, {y}) has trail {trail}"
+            );
+        }
+    }
+    for y in 0..u.grid.height {
+        let last = u.trailing[(y + 1) * u.grid.words_per_row - 1];
+        assert_eq!(last & !mask, 0, "trailing padding bit set in row {y}");
+    }
 }
 
 /// Cell-by-cell B3/S23, the reference for `step()`.
@@ -65,6 +87,41 @@ fn naive_step(cells: &[Vec<bool>], wrap: bool) -> Vec<Vec<bool>> {
                     }
                     neighbours == 3 || (neighbours == 2 && alive_at(x, y))
                 })
+                .collect()
+        })
+        .collect()
+}
+
+/// Ages and trail after one generation from `before` to `after`, cell by
+/// cell, the reference for the layers `step()` keeps.
+fn naive_layers(
+    before: &[Vec<bool>],
+    after: &[Vec<bool>],
+    layers: &[Vec<(u16, u8)>],
+) -> Vec<Vec<(u16, u8)>> {
+    (0..layers.len())
+        .map(|y| {
+            (0..layers[y].len())
+                .map(|x| {
+                    let (age, trail) = layers[y][x];
+                    match (before[y][x], after[y][x]) {
+                        (true, true) => (age.saturating_add(1), 0),
+                        (false, true) => (0, 0),
+                        (true, false) => (age, 1),
+                        (false, false) if (1..=254).contains(&trail) => (age, trail + 1),
+                        (false, false) => (age, trail),
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn layer_rows(u: &Universe) -> Vec<Vec<(u16, u8)>> {
+    (0..u.height())
+        .map(|y| {
+            (0..u.width())
+                .map(|x| (u.age(x, y), u.trail(x, y)))
                 .collect()
         })
         .collect()
@@ -191,12 +248,19 @@ fn step_matches_naive_stepper_on_random_grids() {
                 let mut u = Universe::new(width, height, edges).unwrap();
                 u.random_fill(0.35, seed);
                 let mut expected = to_rows(&u);
+                let mut expected_layers = layer_rows(&u);
                 for generation in 1..=20 {
                     u.step();
-                    expected = naive_step(&expected, edges == Edges::Wrap);
+                    let before = expected;
+                    expected = naive_step(&before, edges == Edges::Wrap);
+                    expected_layers = naive_layers(&before, &expected, &expected_layers);
                     assert!(
                         to_rows(&u) == expected,
                         "{width} x {height} {edges:?}, generation {generation}"
+                    );
+                    assert!(
+                        layer_rows(&u) == expected_layers,
+                        "layers, {width} x {height} {edges:?}, generation {generation}"
                     );
                     assert_storage_consistent(&u);
                 }
@@ -265,6 +329,290 @@ fn random_fill_extreme_densities() {
     assert_storage_consistent(&u);
     u.random_fill(0.0, 1);
     assert_eq!(u.live_count(), 0);
+}
+
+// Ages
+
+#[test]
+fn block_cells_reach_age_n_after_n_generations() {
+    let block = [(3, 3), (4, 3), (3, 4), (4, 4)];
+    let mut u = universe(8, 8, Edges::Dead, &block);
+    for n in 1..=10 {
+        u.step();
+        for &(x, y) in &block {
+            assert_eq!(u.age(x, y), n, "({x}, {y})");
+        }
+    }
+}
+
+#[test]
+fn blinker_ends_stay_at_age_zero_and_its_centre_counts_up() {
+    let mut u = universe(5, 5, Edges::Dead, &[(1, 2), (2, 2), (3, 2)]);
+    for n in 1..=6 {
+        u.step();
+        assert_eq!(u.age(2, 2), n);
+        let ends = if n % 2 == 1 {
+            [(2, 1), (2, 3)]
+        } else {
+            [(1, 2), (3, 2)]
+        };
+        for (x, y) in ends {
+            assert_eq!(u.age(x, y), 0, "({x}, {y}) at generation {n}");
+        }
+    }
+}
+
+#[test]
+fn age_saturates_at_u16_max() {
+    let block = [(3, 3), (4, 3), (3, 4), (4, 4)];
+    let mut u = universe(8, 8, Edges::Dead, &block);
+    u.ages[3 * 8 + 3] = u16::MAX - 1;
+    u.step();
+    assert_eq!(u.age(3, 3), u16::MAX);
+    u.step();
+    assert_eq!(u.age(3, 3), u16::MAX);
+    assert_eq!(u.age(4, 4), 2);
+}
+
+#[test]
+fn set_gives_age_zero_to_new_cells_and_keeps_live_ones() {
+    let block = [(3, 3), (4, 3), (3, 4), (4, 4)];
+    let mut u = universe(8, 8, Edges::Dead, &block);
+    u.step();
+    u.step();
+    u.set(3, 3, true);
+    assert_eq!(u.age(3, 3), 2);
+    u.set(3, 3, false);
+    assert_eq!(u.age(3, 3), 2, "a cell killed by an edit keeps its age");
+    u.set(3, 3, true);
+    assert_eq!(u.age(3, 3), 0);
+    assert_eq!((u.age(8, 0), u.trail(0, 8)), (0, 0));
+}
+
+#[test]
+fn a_dead_cell_keeps_the_age_it_died_at() {
+    // A block cell crowded by two added cells dies after three generations.
+    let mut u = universe(9, 9, Edges::Dead, &[(1, 1), (2, 1), (1, 2), (2, 2)]);
+    for _ in 0..3 {
+        u.step();
+    }
+    u.set(3, 3, true);
+    u.set(3, 2, true);
+    u.step();
+    assert!(!u.get(2, 2));
+    assert_eq!((u.age(2, 2), u.trail(2, 2)), (3, 1));
+}
+
+// Trail
+
+#[test]
+fn trail_counts_up_after_a_death_by_the_rule_and_stops_at_255() {
+    let mut u = universe(5, 5, Edges::Dead, &[(2, 2)]);
+    for n in 1..=300u32 {
+        u.step();
+        assert_eq!(u.trail(2, 2) as u32, n.min(255), "generation {n}");
+        assert_storage_consistent(&u);
+    }
+}
+
+#[test]
+fn a_cell_killed_by_set_has_no_trail() {
+    let mut u = universe(5, 5, Edges::Dead, &[(2, 2)]);
+    u.set(2, 2, false);
+    assert_eq!(u.trail(2, 2), 0);
+    u.step();
+    assert_eq!(u.trail(2, 2), 0);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn birth_resets_the_trail() {
+    // The blinker's ends die and are born again every other generation.
+    let mut u = universe(5, 5, Edges::Dead, &[(1, 2), (2, 2), (3, 2)]);
+    u.step();
+    assert_eq!((u.trail(1, 2), u.trail(2, 1)), (1, 0));
+    u.step();
+    assert_eq!((u.trail(1, 2), u.trail(2, 1)), (0, 1));
+
+    // A saturated trail is reset by a birth too.
+    let mut u = universe(7, 7, Edges::Dead, &[(3, 3)]);
+    for _ in 0..300 {
+        u.step();
+    }
+    assert_eq!(u.trail(3, 3), 255);
+    for (x, y) in [(2, 2), (4, 2), (3, 4)] {
+        u.set(x, y, true);
+    }
+    u.step();
+    assert!(u.get(3, 3));
+    assert_eq!((u.age(3, 3), u.trail(3, 3)), (0, 0));
+    assert_storage_consistent(&u);
+
+    // And so is a trail cut short by an edit.
+    let mut u = universe(5, 5, Edges::Dead, &[(2, 2)]);
+    u.step();
+    u.set(2, 2, true);
+    assert_eq!(u.trail(2, 2), 0);
+    assert_storage_consistent(&u);
+}
+
+#[test]
+fn clear_and_random_fill_zero_both_layers() {
+    let zeroed = |u: &Universe| u.ages.iter().all(|&a| a == 0) && u.trail.iter().all(|&t| t == 0);
+    let mut u = Universe::new(70, 20, Edges::Wrap).unwrap();
+    u.random_fill(0.4, 3);
+    for _ in 0..10 {
+        u.step();
+    }
+    assert!(!zeroed(&u));
+    u.clear();
+    assert!(zeroed(&u));
+    assert_storage_consistent(&u);
+
+    u.random_fill(0.4, 3);
+    for _ in 0..10 {
+        u.step();
+    }
+    u.random_fill(0.4, 4);
+    assert!(zeroed(&u));
+    assert_storage_consistent(&u);
+}
+
+// clone_from
+
+#[test]
+fn clone_from_gives_an_equal_universe() {
+    let mut source = Universe::new(100, 40, Edges::Dead).unwrap();
+    source.random_fill(0.3, 5);
+    for _ in 0..7 {
+        source.step();
+    }
+    let assert_equal = |copy: &Universe| {
+        assert_eq!(
+            (copy.width(), copy.height(), copy.edges()),
+            (100, 40, Edges::Dead)
+        );
+        assert_eq!(
+            (copy.generation(), copy.live_count()),
+            (source.generation(), source.live_count())
+        );
+        assert_eq!(copy.grid.words_per_row, source.grid.words_per_row);
+        assert_eq!(copy.grid.cells, source.grid.cells);
+        assert_eq!(copy.ages, source.ages);
+        assert_eq!(copy.trail, source.trail);
+        assert_eq!(copy.trailing, source.trailing);
+    };
+
+    // Into a larger and a smaller universe, so buffers shrink and grow.
+    for (width, height) in [(300, 300), (3, 3)] {
+        let mut copy = Universe::new(width, height, Edges::Wrap).unwrap();
+        copy.random_fill(0.5, 1);
+        copy.step();
+        copy.clone_from(&source);
+        assert_equal(&copy);
+        let mut stepped = source.clone();
+        copy.step();
+        stepped.step();
+        assert_eq!(copy.grid.cells, stepped.grid.cells);
+        assert_eq!(copy.ages, stepped.ages);
+    }
+    assert_equal(&source.clone());
+}
+
+#[test]
+fn clone_from_reuses_the_targets_buffers() {
+    let source = universe(64, 64, Edges::Wrap, &GLIDER);
+    let mut copy = Universe::new(64, 64, Edges::Wrap).unwrap();
+    let buffers = (
+        copy.grid.cells.as_ptr(),
+        copy.ages.as_ptr(),
+        copy.trail.as_ptr(),
+        copy.trailing.as_ptr(),
+    );
+    copy.clone_from(&source);
+    assert_eq!(
+        (
+            copy.grid.cells.as_ptr(),
+            copy.ages.as_ptr(),
+            copy.trail.as_ptr(),
+            copy.trailing.as_ptr(),
+        ),
+        buffers
+    );
+}
+
+// copy_ages and copy_trail
+
+#[test]
+fn copy_ages_saturates_to_255_in_byte_order() {
+    let mut u = Universe::new(40, 3, Edges::Dead).unwrap();
+    for (x, age) in [(0, 1), (1, 255), (2, 256), (3, u16::MAX), (5, 7)] {
+        u.ages[40 + x] = age;
+    }
+    let mut out = vec![99];
+    u.copy_ages(0, 1, 32, 1, &mut out);
+    assert_eq!(out, [99, 0xffff_ff01, 7 << 8, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn copy_ages_partial_last_word_and_trail() {
+    // Width 42: the last word of a 64-wide region holds cells 40 and 41, then
+    // zeros.
+    let mut u = Universe::new(42, 3, Edges::Dead).unwrap();
+    u.ages[42 + 40] = 3;
+    u.ages[42 + 41] = 4;
+    u.trail[42 + 41] = 9;
+    u.trail[42 + 39] = 200;
+    let mut ages = Vec::new();
+    u.copy_ages(0, 1, 64, 1, &mut ages);
+    let mut expected = vec![0; 16];
+    expected[10] = 3 | 4 << 8;
+    assert_eq!(ages, expected);
+
+    let mut trail = Vec::new();
+    u.copy_trail(0, 0, 64, 2, &mut trail);
+    assert_eq!(trail.len(), 32);
+    assert!(trail[..16].iter().all(|&w| w == 0));
+    let mut expected = vec![0; 16];
+    expected[9] = 200 << 24;
+    expected[10] = 9 << 8;
+    assert_eq!(trail[16..], expected);
+}
+
+#[test]
+fn copy_trail_region_at_the_right_edge() {
+    let mut u = universe(200, 3, Edges::Dead, &[(150, 1)]);
+    u.step();
+    u.step();
+    let mut expected = vec![0; 16];
+    let mut trail = Vec::new();
+    u.copy_trail(128, 1, 96, 1, &mut trail);
+    expected[(150 - 128) / 4] = 2 << 16;
+    assert_eq!(trail.len(), 24);
+    assert_eq!(trail[..16], expected);
+    assert!(trail[16..].iter().all(|&w| w == 0));
+
+    // Cells 196..199 fill the last in-grid word.
+    for x in 196..200 {
+        u.ages[2 * 200 + x] = x as u16 - 195;
+    }
+    let mut ages = Vec::new();
+    u.copy_ages(192, 2, 32, 1, &mut ages);
+    assert_eq!(ages, [0, 0x0403_0201, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+#[should_panic(expected = "aligned to 32")]
+fn copy_ages_rejects_unaligned_columns() {
+    let u = universe(70, 10, Edges::Wrap, &[]);
+    u.copy_ages(0, 0, 48, 1, &mut Vec::new());
+}
+
+#[test]
+#[should_panic(expected = "inside the grid")]
+fn copy_trail_rejects_regions_past_the_grid() {
+    let u = universe(70, 10, Edges::Wrap, &[]);
+    u.copy_trail(64, 0, 64, 1, &mut Vec::new());
 }
 
 // copy_region
@@ -346,15 +694,21 @@ fn set_edges_applies_from_the_next_generation() {
 fn timing_2048_squared() {
     let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap).unwrap();
     u.random_fill(0.25, 1);
-    u.step();
-    let steps = 100;
-    let start = std::time::Instant::now();
-    for _ in 0..steps {
+    let time_steps = |u: &mut Universe, steps: u32, when: &str| {
+        let start = std::time::Instant::now();
+        for _ in 0..steps {
+            u.step();
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0 / steps as f64;
+        let trailing: u32 = u.trailing.iter().map(|w| w.count_ones()).sum();
+        println!(
+            "2048 x 2048 {when}: {ms:.3} ms per step ({steps} steps, {} live and {trailing} trailing at the end)",
+            u.live_count()
+        );
+    };
+    time_steps(&mut u, 10, "right after a 25 % fill");
+    while u.generation() < 1000 {
         u.step();
     }
-    let ms = start.elapsed().as_secs_f64() * 1000.0 / steps as f64;
-    println!(
-        "2048 x 2048: {ms:.3} ms per step ({steps} steps, {} live at the end)",
-        u.live_count()
-    );
+    time_steps(&mut u, 100, "after 1000 generations");
 }
