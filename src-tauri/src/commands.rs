@@ -1,6 +1,8 @@
 //! Tauri commands. Each forwards to the simulation thread's queue, except
 //! `frame` and `pending_cells`, which only read.
 
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
@@ -8,27 +10,96 @@ use glife_engine::{Axis, Edges, PasteMode, Pattern, PlaceError, Rect, MAX_SIDE, 
 use tauri::ipc::Response;
 use tauri::State;
 
+use serde::{Deserialize, Serialize};
+
 use crate::frame;
+use crate::library::builtin;
+use crate::library::personal::Library;
+use crate::library::Problem;
 use crate::sim::{self, os_seed, Command, Latest};
+
+/// A pattern waiting to be placed: its size, name, comment and notices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingInfo {
+    pub width: u32,
+    pub height: u32,
+    pub name: String,
+    pub comment: String,
+    pub notices: Vec<String>,
+}
+
+/// Where a file-backed universe came from.
+#[derive(Debug, Default, Clone)]
+pub struct FileState {
+    /// The `.glife` file last saved to or opened from.
+    pub path: Option<PathBuf>,
+    /// A name for Save As when there is no path, from an opened RLE file.
+    pub suggested: Option<String>,
+}
 
 pub struct Host {
     pub queue: Sender<Command>,
     pub latest: Latest,
     /// The pattern being placed.
     pub pending: Mutex<Option<Arc<Pattern>>>,
+    /// Name and comment of the pending pattern.
+    pub pending_meta: Mutex<(String, String)>,
+    pub file: Mutex<FileState>,
+    pub builtin: Vec<builtin::Entry>,
+    pub builtin_problems: Vec<Problem>,
+    pub personal: Library,
+    /// Set once the unsaved-changes prompt has been answered at quit.
+    pub quitting: AtomicBool,
 }
 
 impl Host {
-    fn send(&self, command: Command) -> Result<(), String> {
+    pub fn new(queue: Sender<Command>, latest: Latest, builtin_dir: Option<&Path>, personal_dir: &Path) -> Result<Host, String> {
+        let (builtin, builtin_problems) = match builtin_dir {
+            Some(dir) => builtin::load(dir),
+            None => (
+                Vec::new(),
+                vec![Problem { file: "patterns".into(), reason: "The built-in pattern folder was not found.".into() }],
+            ),
+        };
+        Ok(Host {
+            queue,
+            latest,
+            pending: Mutex::new(None),
+            pending_meta: Mutex::new(Default::default()),
+            file: Mutex::new(FileState::default()),
+            builtin,
+            builtin_problems,
+            personal: Library::open(personal_dir)?,
+            quitting: AtomicBool::new(false),
+        })
+    }
+
+    /// Fills the pending slot, refusing a pattern larger than the grid.
+    pub fn set_pending(&self, pattern: Pattern, name: String, comment: String, notices: Vec<String>) -> Result<PendingInfo, String> {
+        let (w, h) = (pattern.width(), pattern.height());
+        let grid = {
+            let snapshot = self.latest.lock().unwrap().clone();
+            (snapshot.universe.width(), snapshot.universe.height())
+        };
+        if w > grid.0 || h > grid.1 {
+            return Err(PlaceError { pattern: (w, h), grid }.to_string());
+        }
+        *self.pending.lock().unwrap() = Some(Arc::new(pattern));
+        *self.pending_meta.lock().unwrap() = (name.clone(), comment.clone());
+        Ok(PendingInfo { width: w, height: h, name, comment, notices })
+    }
+
+    pub fn send(&self, command: Command) -> Result<(), String> {
         self.queue.send(command).map_err(|_| "simulation thread stopped".to_string())
     }
 
-    fn pending(&self) -> Result<Arc<Pattern>, String> {
+    pub fn pending(&self) -> Result<Arc<Pattern>, String> {
         self.pending.lock().unwrap().clone().ok_or_else(|| "no pattern is being placed".to_string())
     }
 
     /// `rect` if it lies inside the grid as of the latest snapshot.
-    fn selection(&self, rect: Rect) -> Result<Rect, String> {
+    pub fn selection(&self, rect: Rect) -> Result<Rect, String> {
         let snapshot = self.latest.lock().unwrap().clone();
         let u = &snapshot.universe;
         if sim::inside(rect, u) {
@@ -54,6 +125,7 @@ pub fn new_universe(host: State<Host>, width: u32, height: u32, edges: String) -
     if !sides.contains(&width) || !sides.contains(&height) {
         return Err(format!("universe size {width} x {height} is outside {MIN_SIDE}..={MAX_SIDE} per side"));
     }
+    *host.file.lock().unwrap() = FileState::default();
     host.send(Command::NewUniverse { width, height, edges: parse_edges(&edges)? })
 }
 
@@ -173,4 +245,19 @@ pub fn random_fill(host: State<Host>, density: Option<f64>) -> Result<(), String
 pub fn frame(host: State<Host>, x0: f64, y0: f64, w: f64, h: f64, since: u64, layers: u32) -> Response {
     let snapshot = host.latest.lock().unwrap().clone();
     Response::new(frame::encode(&snapshot, x0, y0, w, h, since, layers))
+}
+
+/// A rectangle as the UI sends it.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct RectArg {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl From<RectArg> for Rect {
+    fn from(r: RectArg) -> Rect {
+        Rect { x: r.x, y: r.y, w: r.w, h: r.h }
+    }
 }

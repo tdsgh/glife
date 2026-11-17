@@ -14,6 +14,9 @@ serde_json = "1.0.154"
 toml = "1.2.1"
 flate2 = "1.1.11"
 time = { version = "0.3.55", features = ["formatting", "parsing"] }
+tauri-plugin-dialog = "2.8.4"
+tauri-plugin-clipboard-manager = "2.5.0"
+tauri-plugin-opener = "2.7.3"
 
 [dev-dependencies]
 tempfile = "3.27.0"

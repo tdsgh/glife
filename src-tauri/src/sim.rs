@@ -54,10 +54,8 @@ pub enum Command {
     Undo,
     Redo,
     /// Replaces the universe with an opened one, paused.
-    #[allow(dead_code)] // sent by the file commands
     Load(Universe),
     /// The universe at `revision` was saved.
-    #[allow(dead_code)] // sent by the file commands
     MarkSaved { revision: u64 },
 }
 
