@@ -1,6 +1,6 @@
 //! Opening an RLE file as a whole universe.
 
-use glife_engine::{Edges, PasteMode, Universe, MAX_SIDE, MIN_SIDE};
+use glife_engine::{Edges, PasteMode, Tiling, Universe, MAX_SIDE, MIN_SIDE};
 
 use crate::rle::Rle;
 
@@ -53,7 +53,7 @@ pub fn universe_from_rle(rle: &Rle) -> Result<(Universe, Vec<String>), String> {
         }
     };
 
-    let mut u = Universe::new(width, height, edges).map_err(|e| e.to_string())?;
+    let mut u = Universe::new(width, height, edges, Tiling::Square).map_err(|e| e.to_string())?;
     let (ox, oy) = ((width - p.width()) / 2, (height - p.height()) / 2);
     u.place(p, ox as i64, oy as i64, PasteMode::Or).map_err(|e| e.to_string())?;
     Ok((u, notices))

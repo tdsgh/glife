@@ -1,13 +1,13 @@
 use std::collections::BTreeSet;
 
-use crate::{Edges, Universe, MAX_SIDE, MIN_SIDE};
+use crate::{Edges, Tiling, Universe, MAX_SIDE, MIN_SIDE};
 
 type Cells = BTreeSet<(u32, u32)>;
 
 const GLIDER: [(u32, u32); 5] = [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
 
 fn universe(width: u32, height: u32, edges: Edges, cells: &[(u32, u32)]) -> Universe {
-    let mut u = Universe::new(width, height, edges).unwrap();
+    let mut u = Universe::new(width, height, edges, Tiling::Square).unwrap();
     for &(x, y) in cells {
         u.set(x, y, true);
     }
@@ -245,7 +245,7 @@ fn step_matches_naive_stepper_on_random_grids() {
         for height in [3, 7, 64] {
             for edges in [Edges::Wrap, Edges::Dead] {
                 seed += 1;
-                let mut u = Universe::new(width, height, edges).unwrap();
+                let mut u = Universe::new(width, height, edges, Tiling::Square).unwrap();
                 u.random_fill(0.35, seed);
                 let mut expected = to_rows(&u);
                 let mut expected_layers = layer_rows(&u);
@@ -300,8 +300,8 @@ fn clear_kills_every_cell_and_resets_the_generation() {
 
 #[test]
 fn random_fill_is_deterministic_per_seed_and_resets_the_generation() {
-    let mut a = Universe::new(100, 50, Edges::Wrap).unwrap();
-    let mut b = Universe::new(100, 50, Edges::Wrap).unwrap();
+    let mut a = Universe::new(100, 50, Edges::Wrap, Tiling::Square).unwrap();
+    let mut b = Universe::new(100, 50, Edges::Wrap, Tiling::Square).unwrap();
     a.step();
     a.random_fill(0.3, 42);
     b.random_fill(0.3, 42);
@@ -314,7 +314,7 @@ fn random_fill_is_deterministic_per_seed_and_resets_the_generation() {
 
 #[test]
 fn random_fill_density_quarter_on_largest_grid() {
-    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap).unwrap();
+    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(0.25, 7);
     let share = u.live_count() as f64 / (MAX_SIDE as f64 * MAX_SIDE as f64);
     assert!((0.24..=0.26).contains(&share), "share {share}");
@@ -323,7 +323,7 @@ fn random_fill_density_quarter_on_largest_grid() {
 
 #[test]
 fn random_fill_extreme_densities() {
-    let mut u = Universe::new(70, 3, Edges::Dead).unwrap();
+    let mut u = Universe::new(70, 3, Edges::Dead, Tiling::Square).unwrap();
     u.random_fill(1.0, 1);
     assert_eq!(u.live_count(), 70 * 3);
     assert_storage_consistent(&u);
@@ -459,7 +459,7 @@ fn birth_resets_the_trail() {
 #[test]
 fn clear_and_random_fill_zero_both_layers() {
     let zeroed = |u: &Universe| u.ages.iter().all(|&a| a == 0) && u.trail.iter().all(|&t| t == 0);
-    let mut u = Universe::new(70, 20, Edges::Wrap).unwrap();
+    let mut u = Universe::new(70, 20, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(0.4, 3);
     for _ in 0..10 {
         u.step();
@@ -482,7 +482,7 @@ fn clear_and_random_fill_zero_both_layers() {
 
 #[test]
 fn clone_from_gives_an_equal_universe() {
-    let mut source = Universe::new(100, 40, Edges::Dead).unwrap();
+    let mut source = Universe::new(100, 40, Edges::Dead, Tiling::Square).unwrap();
     source.random_fill(0.3, 5);
     for _ in 0..7 {
         source.step();
@@ -505,7 +505,7 @@ fn clone_from_gives_an_equal_universe() {
 
     // Into a larger and a smaller universe, so buffers shrink and grow.
     for (width, height) in [(300, 300), (3, 3)] {
-        let mut copy = Universe::new(width, height, Edges::Wrap).unwrap();
+        let mut copy = Universe::new(width, height, Edges::Wrap, Tiling::Square).unwrap();
         copy.random_fill(0.5, 1);
         copy.step();
         copy.clone_from(&source);
@@ -522,7 +522,7 @@ fn clone_from_gives_an_equal_universe() {
 #[test]
 fn clone_from_reuses_the_targets_buffers() {
     let source = universe(64, 64, Edges::Wrap, &GLIDER);
-    let mut copy = Universe::new(64, 64, Edges::Wrap).unwrap();
+    let mut copy = Universe::new(64, 64, Edges::Wrap, Tiling::Square).unwrap();
     let buffers = (
         copy.grid.cells.as_ptr(),
         copy.ages.as_ptr(),
@@ -545,7 +545,7 @@ fn clone_from_reuses_the_targets_buffers() {
 
 #[test]
 fn copy_ages_saturates_to_255_in_byte_order() {
-    let mut u = Universe::new(40, 3, Edges::Dead).unwrap();
+    let mut u = Universe::new(40, 3, Edges::Dead, Tiling::Square).unwrap();
     for (x, age) in [(0, 1), (1, 255), (2, 256), (3, u16::MAX), (5, 7)] {
         u.ages[40 + x] = age;
     }
@@ -558,7 +558,7 @@ fn copy_ages_saturates_to_255_in_byte_order() {
 fn copy_ages_partial_last_word_and_trail() {
     // Width 42: the last word of a 64-wide region holds cells 40 and 41, then
     // zeros.
-    let mut u = Universe::new(42, 3, Edges::Dead).unwrap();
+    let mut u = Universe::new(42, 3, Edges::Dead, Tiling::Square).unwrap();
     u.ages[42 + 40] = 3;
     u.ages[42 + 41] = 4;
     u.trail[42 + 41] = 9;
@@ -619,7 +619,7 @@ fn copy_trail_rejects_regions_past_the_grid() {
 
 #[test]
 fn copy_region_partial_last_word() {
-    let mut u = Universe::new(40, 3, Edges::Wrap).unwrap();
+    let mut u = Universe::new(40, 3, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(1.0, 0);
     let mut out = Vec::new();
     u.copy_region(0, 1, 64, 2, &mut out);
@@ -662,12 +662,12 @@ fn new_accepts_sides_within_limits_only() {
     assert_eq!((MIN_SIDE, MAX_SIDE), (3, 2048));
     for (width, height) in [(2, 10), (10, 2), (2049, 10), (10, 2049)] {
         assert!(
-            Universe::new(width, height, Edges::Wrap).is_err(),
+            Universe::new(width, height, Edges::Wrap, Tiling::Square).is_err(),
             "{width} x {height}"
         );
     }
     for (width, height) in [(3, 3), (2048, 2048), (3, 2048), (2048, 3)] {
-        let u = Universe::new(width, height, Edges::Dead).unwrap();
+        let u = Universe::new(width, height, Edges::Dead, Tiling::Square).unwrap();
         assert_eq!(
             (u.width(), u.height(), u.edges()),
             (width, height, Edges::Dead)
@@ -682,7 +682,7 @@ fn set_edges_applies_from_the_next_generation() {
     let mut u = universe(5, 5, Edges::Wrap, &[(4, 2), (0, 2), (1, 2)]);
     u.step();
     assert_eq!(alive(&u), [(0, 1), (0, 2), (0, 3)].into());
-    u.set_edges(Edges::Dead);
+    u.set_edges(Edges::Dead).unwrap();
     u.step();
     assert_eq!(alive(&u), [(0, 2), (1, 2)].into());
 }
@@ -766,16 +766,20 @@ fn place_wraps_across_edges_and_corners() {
         (7, 5, vec![(7, 5), (0, 5), (7, 0), (0, 0)]),
         (-1, -1, vec![(7, 5), (0, 5), (7, 0), (0, 0)]),
     ] {
-        let mut u = Universe::new(8, 6, Edges::Wrap).unwrap();
+        let mut u = Universe::new(8, 6, Edges::Wrap, Tiling::Square).unwrap();
         u.place(&p, x, y, PasteMode::Or).unwrap();
-        assert_eq!(alive(&u), expected.into_iter().collect::<Cells>(), "at {x},{y}");
+        assert_eq!(
+            alive(&u),
+            expected.into_iter().collect::<Cells>(),
+            "at {x},{y}"
+        );
     }
 }
 
 #[test]
 fn place_on_dead_edges_drops_the_outside_part() {
     let p = pattern(2, 2, &[(0, 0), (1, 0), (0, 1), (1, 1)]);
-    let mut u = Universe::new(8, 6, Edges::Dead).unwrap();
+    let mut u = Universe::new(8, 6, Edges::Dead, Tiling::Square).unwrap();
     u.place(&p, -1, -1, PasteMode::Or).unwrap();
     assert_eq!(alive(&u), [(0, 0)].into());
     u.clear();
@@ -788,8 +792,10 @@ fn place_on_dead_edges_drops_the_outside_part() {
 
 #[test]
 fn place_refuses_a_pattern_larger_than_the_grid() {
-    let mut u = Universe::new(8, 6, Edges::Wrap).unwrap();
-    let err = u.place(&Pattern::new(9, 2), 0, 0, PasteMode::Or).unwrap_err();
+    let mut u = Universe::new(8, 6, Edges::Wrap, Tiling::Square).unwrap();
+    let err = u
+        .place(&Pattern::new(9, 2), 0, 0, PasteMode::Or)
+        .unwrap_err();
     assert_eq!((err.pattern, err.grid), ((9, 2), (8, 6)));
     assert!(u.place(&Pattern::new(2, 7), 0, 0, PasteMode::Or).is_err());
     assert!(u.place(&Pattern::new(8, 6), 0, 0, PasteMode::Or).is_ok());
@@ -810,7 +816,7 @@ fn footprint_agrees_with_where_place_writes() {
         for (w, h) in [(1, 1), (3, 2), (8, 6)] {
             for x in -9..=9 {
                 for y in -7..=7 {
-                    let mut u = Universe::new(8, 6, edges).unwrap();
+                    let mut u = Universe::new(8, 6, edges, Tiling::Square).unwrap();
                     u.place(&full(w, h), x, y, PasteMode::Or).unwrap();
                     let mut covered = Cells::new();
                     for r in u.footprint(w, h, x, y) {
@@ -825,18 +831,23 @@ fn footprint_agrees_with_where_place_writes() {
             }
         }
     }
-    let u = Universe::new(8, 6, Edges::Wrap).unwrap();
+    let u = Universe::new(8, 6, Edges::Wrap, Tiling::Square).unwrap();
     assert_eq!(u.footprint(2, 2, 7, 5).len(), 4);
 }
 
 #[test]
 fn flip_twice_is_identity_and_flip_moves_ages_and_trail() {
-    let mut u = Universe::new(12, 9, Edges::Wrap).unwrap();
+    let mut u = Universe::new(12, 9, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(0.4, 5);
     for _ in 0..7 {
         u.step();
     }
-    let r = Rect { x: 2, y: 1, w: 7, h: 6 };
+    let r = Rect {
+        x: 2,
+        y: 1,
+        w: 7,
+        h: 6,
+    };
     let before = full_state(&u);
     for axis in [Axis::Horizontal, Axis::Vertical] {
         let mut v = u.clone();
@@ -867,16 +878,29 @@ fn flip_twice_is_identity_and_flip_moves_ages_and_trail() {
 fn extract_after_place_gives_the_pattern_back() {
     let p = pattern(5, 4, &[(0, 0), (4, 3), (2, 1), (1, 3)]);
     for edges in [Edges::Wrap, Edges::Dead] {
-        let mut u = Universe::new(20, 20, edges).unwrap();
+        let mut u = Universe::new(20, 20, edges, Tiling::Square).unwrap();
         u.place(&p, 6, 7, PasteMode::Or).unwrap();
-        assert_eq!(u.extract(Rect { x: 6, y: 7, w: 5, h: 4 }), p);
+        assert_eq!(
+            u.extract(Rect {
+                x: 6,
+                y: 7,
+                w: 5,
+                h: 4
+            }),
+            p
+        );
     }
 }
 
 #[test]
 fn kill_rect_kills_without_trail_and_keeps_the_rest() {
     let mut u = universe(8, 8, Edges::Dead, &[(1, 1), (2, 2), (6, 6)]);
-    u.kill_rect(Rect { x: 0, y: 0, w: 4, h: 4 });
+    u.kill_rect(Rect {
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 4,
+    });
     assert_eq!(alive(&u), [(6, 6)].into());
     assert_eq!(u.trail(1, 1), 0);
     assert_eq!(u.live_count(), 1);
@@ -897,22 +921,38 @@ fn kill_rect_and_copy_placing_clear_trail_in_the_rectangle() {
     let mut u = universe(8, 8, Edges::Dead, &[(4, 4), (1, 1)]);
     u.step();
     assert_eq!((u.trail(4, 4), u.trail(1, 1)), (1, 1));
-    u.kill_rect(Rect { x: 3, y: 3, w: 2, h: 2 });
+    u.kill_rect(Rect {
+        x: 3,
+        y: 3,
+        w: 2,
+        h: 2,
+    });
     assert_eq!((u.trail(4, 4), u.trail(1, 1)), (0, 1));
-    u.place(&pattern(2, 2, &[(0, 0)]), 0, 0, PasteMode::Copy).unwrap();
+    u.place(&pattern(2, 2, &[(0, 0)]), 0, 0, PasteMode::Copy)
+        .unwrap();
     assert!(u.get(0, 0) && !u.get(1, 1) && u.trail(1, 1) == 0);
     assert_storage_consistent(&u);
 }
 
 #[test]
 fn restore_after_edits_restores_cells_ages_and_count() {
-    let mut u = Universe::new(40, 30, Edges::Wrap).unwrap();
+    let mut u = Universe::new(40, 30, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(0.3, 11);
     for _ in 0..5 {
         u.step();
     }
-    let whole = Rect { x: 0, y: 0, w: 40, h: 30 };
-    let part = Rect { x: 5, y: 4, w: 20, h: 12 };
+    let whole = Rect {
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 30,
+    };
+    let part = Rect {
+        x: 5,
+        y: 4,
+        w: 20,
+        h: 12,
+    };
     let blob = pattern(6, 6, &[(0, 0), (1, 1), (5, 5), (2, 4)]);
     for rects in [vec![whole], vec![part]] {
         let mut v = u.clone();
@@ -920,7 +960,12 @@ fn restore_after_edits_restores_cells_ages_and_count() {
         let expected = live_state(&v);
         let capture = v.capture(&rects);
         v.flip_rect(part, Axis::Horizontal);
-        v.kill_rect(Rect { x: 8, y: 8, w: 6, h: 6 });
+        v.kill_rect(Rect {
+            x: 8,
+            y: 8,
+            w: 6,
+            h: 6,
+        });
         v.place(&blob, 20, 12, PasteMode::Copy).unwrap();
         v.place(&blob, 38, 28, PasteMode::Or).unwrap();
         v.restore(&capture);
@@ -951,10 +996,15 @@ fn restore_after_edits_restores_cells_ages_and_count() {
 
 #[test]
 fn restore_after_random_fill_and_clear_restores_everything() {
-    let mut u = Universe::new(33, 17, Edges::Dead).unwrap();
+    let mut u = Universe::new(33, 17, Edges::Dead, Tiling::Square).unwrap();
     u.random_fill(0.5, 2);
     u.step();
-    let whole = Rect { x: 0, y: 0, w: 33, h: 17 };
+    let whole = Rect {
+        x: 0,
+        y: 0,
+        w: 33,
+        h: 17,
+    };
     let expected = live_state(&u);
     let count = u.live_count();
     let capture = u.capture(&[whole]);
@@ -989,9 +1039,14 @@ fn restore_cell_puts_back_one_cell() {
 
 #[test]
 fn whole_grid_capture_is_compact() {
-    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap).unwrap();
+    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap, Tiling::Square).unwrap();
     u.random_fill(0.25, 1);
-    let capture = u.capture(&[Rect { x: 0, y: 0, w: MAX_SIDE, h: MAX_SIDE }]);
+    let capture = u.capture(&[Rect {
+        x: 0,
+        y: 0,
+        w: MAX_SIDE,
+        h: MAX_SIDE,
+    }]);
     let bits = (MAX_SIDE as usize * MAX_SIDE as usize) / 8;
     assert!(
         capture.bytes() - bits < 1 << 20,
@@ -1036,11 +1091,51 @@ fn from_parts_builds_a_universe_with_ages() {
     let p = pattern(4, 3, &[(1, 1)]);
     let mut ages = vec![0u16; 12];
     ages[5] = 9;
-    let u = Universe::from_parts(4, 3, Edges::Dead, 7, &p, &ages).unwrap();
+    let u = Universe::from_parts(
+        4,
+        3,
+        Edges::Dead,
+        Tiling::Square,
+        Tiling::Square.default_rule(),
+        7,
+        &p,
+        &ages,
+    )
+    .unwrap();
     assert_eq!((u.generation(), u.live_count(), u.age(1, 1)), (7, 1, 9));
-    assert!(Universe::from_parts(4, 3, Edges::Dead, 0, &p, &ages[1..]).is_err());
-    assert!(Universe::from_parts(5, 3, Edges::Dead, 0, &p, &ages).is_err());
-    assert!(Universe::from_parts(2, 3, Edges::Dead, 0, &p, &ages).is_err());
+    assert!(Universe::from_parts(
+        4,
+        3,
+        Edges::Dead,
+        Tiling::Square,
+        Tiling::Square.default_rule(),
+        0,
+        &p,
+        &ages[1..]
+    )
+    .is_err());
+    assert!(Universe::from_parts(
+        5,
+        3,
+        Edges::Dead,
+        Tiling::Square,
+        Tiling::Square.default_rule(),
+        0,
+        &p,
+        &ages
+    )
+    .is_err());
+    assert!(Universe::from_parts(
+        2,
+        3,
+        Edges::Dead,
+        Tiling::Square,
+        Tiling::Square.default_rule(),
+        0,
+        &p,
+        &ages
+    )
+    .is_err());
     let mut u = u;
     u.set_generation(3);
     assert_eq!(u.generation(), 3);
@@ -1051,23 +1146,37 @@ fn from_parts_builds_a_universe_with_ages() {
 #[test]
 #[ignore = "timing; run in release with --ignored --nocapture"]
 fn timing_2048_squared() {
-    let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap).unwrap();
-    u.random_fill(0.25, 1);
-    let time_steps = |u: &mut Universe, steps: u32, when: &str| {
-        let start = std::time::Instant::now();
-        for _ in 0..steps {
+    let high_life = Tiling::Square.presets()[1].1;
+    let cases = [
+        (Tiling::Square, Tiling::Square.default_rule()),
+        (Tiling::Square, high_life),
+        (Tiling::Hexagonal, Tiling::Hexagonal.default_rule()),
+        (Tiling::Triangular12, Tiling::Triangular12.default_rule()),
+        (Tiling::Triangular3, Tiling::Triangular3.default_rule()),
+    ];
+    for (tiling, rule) in cases {
+        let mut u = Universe::new(MAX_SIDE, MAX_SIDE, Edges::Wrap, tiling).unwrap();
+        u.set_rule(rule).unwrap();
+        u.random_fill(0.25, 1);
+        let time_steps = |u: &mut Universe, steps: u32, when: &str| {
+            let start = std::time::Instant::now();
+            for _ in 0..steps {
+                u.step();
+            }
+            let ms = start.elapsed().as_secs_f64() * 1000.0 / steps as f64;
+            let trailing: u32 = u.trailing.iter().map(|w| w.count_ones()).sum();
+            println!(
+                "2048 x 2048 {} {rule} {when}: {ms:.3} ms per step ({steps} steps, {} live and {trailing} trailing at the end)",
+                tiling.id(),
+                u.live_count()
+            );
+        };
+        time_steps(&mut u, 10, "right after a 25 % fill");
+        while u.generation() < 1000 {
             u.step();
         }
-        let ms = start.elapsed().as_secs_f64() * 1000.0 / steps as f64;
-        let trailing: u32 = u.trailing.iter().map(|w| w.count_ones()).sum();
-        println!(
-            "2048 x 2048 {when}: {ms:.3} ms per step ({steps} steps, {} live and {trailing} trailing at the end)",
-            u.live_count()
-        );
-    };
-    time_steps(&mut u, 10, "right after a 25 % fill");
-    while u.generation() < 1000 {
-        u.step();
+        time_steps(&mut u, 100, "after 1000 generations");
     }
-    time_steps(&mut u, 100, "after 1000 generations");
 }
+
+mod grids;

@@ -85,11 +85,11 @@ pub fn encode(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glife_engine::Universe;
+    use glife_engine::{Tiling, Universe};
     use std::path::PathBuf;
 
     fn snapshot() -> Snapshot {
-        let mut universe = Universe::new(64, 3, Edges::Dead).unwrap();
+        let mut universe = Universe::new(64, 3, Edges::Dead, Tiling::Square).unwrap();
         for (x, y) in [(0, 0), (3, 0), (31, 0), (32, 0), (63, 0), (1, 1), (40, 1)] {
             universe.set(x, y, true);
         }
@@ -171,7 +171,7 @@ mod tests {
     /// cells to overpopulation, so the layers hold an age above 255 and
     /// trail counters of 1, 2 and 3.
     fn layered_snapshot() -> Snapshot {
-        let mut universe = Universe::new(64, 3, Edges::Dead).unwrap();
+        let mut universe = Universe::new(64, 3, Edges::Dead, Tiling::Square).unwrap();
         for (x, y) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
             universe.set(x, y, true);
         }
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     #[ignore]
     fn timing_full_frame_with_both_layers() {
-        let mut universe = Universe::new(2048, 2048, Edges::Wrap).unwrap();
+        let mut universe = Universe::new(2048, 2048, Edges::Wrap, Tiling::Square).unwrap();
         universe.random_fill(0.25, 1);
         for _ in 0..10 {
             universe.step();

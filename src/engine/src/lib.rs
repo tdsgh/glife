@@ -1,4 +1,5 @@
-//! The Game of Life engine: a B3/S23 universe with wrapping or dead edges.
+//! The Game of Life engine: a universe on a square, hexagonal or triangular
+//! grid, under a birth/survival rule, with wrapping or dead edges.
 //! Pure and deterministic: no I/O, no rendering, no clock.
 
 mod ages;
@@ -7,17 +8,18 @@ mod pattern;
 mod region;
 mod rng;
 mod step;
+mod step_generic;
 #[cfg(test)]
 mod tests;
+mod tiling;
 
 use std::fmt;
 
 use grid::Grid;
 
 pub use pattern::Pattern;
-pub use region::{
-    Axis, Capture, CellState, PartsError, PasteMode, PlaceError, Rect,
-};
+pub use region::{Axis, Capture, CellState, PartsError, PasteMode, PlaceError, Rect};
+pub use tiling::{Rule, RuleError, Tiling};
 
 /// The shortest side a universe may have.
 pub const MIN_SIDE: u32 = 3;
@@ -33,32 +35,76 @@ pub enum Edges {
     Dead,
 }
 
-/// A width or height outside `MIN_SIDE..=MAX_SIDE`.
+/// A universe size the grid cannot have.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SizeError {
-    width: u32,
-    height: u32,
+pub enum SizeError {
+    /// A width or height outside `MIN_SIDE..=MAX_SIDE`.
+    Range { width: u32, height: u32 },
+    /// An odd side the tiling cannot wrap; see `Tiling::wrap_needs_even`.
+    OddWrap {
+        tiling: Tiling,
+        width: u32,
+        height: u32,
+    },
+}
+
+impl SizeError {
+    /// Whether a `width` by `height` universe on `tiling` can have `edges`.
+    fn check(width: u32, height: u32, edges: Edges, tiling: Tiling) -> Result<(), SizeError> {
+        let sides = MIN_SIDE..=MAX_SIDE;
+        if !sides.contains(&width) || !sides.contains(&height) {
+            return Err(SizeError::Range { width, height });
+        }
+        let (even_width, even_height) = tiling.wrap_needs_even();
+        let odd = (even_width && width % 2 == 1) || (even_height && height % 2 == 1);
+        if edges == Edges::Wrap && odd {
+            return Err(SizeError::OddWrap {
+                tiling,
+                width,
+                height,
+            });
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for SizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "universe size {} x {} is outside {MIN_SIDE}..={MAX_SIDE} per side",
-            self.width, self.height
-        )
+        match *self {
+            SizeError::Range { width, height } => write!(
+                f,
+                "universe size {width} x {height} is outside {MIN_SIDE}..={MAX_SIDE} per side"
+            ),
+            SizeError::OddWrap {
+                tiling,
+                width,
+                height,
+            } => {
+                let sides = match tiling.wrap_needs_even() {
+                    (true, true) => "an even width and an even height",
+                    (true, false) => "an even width",
+                    _ => "an even height",
+                };
+                write!(
+                    f,
+                    "a wrapping universe on this grid needs {sides}, not {width} x {height}"
+                )
+            }
+        }
     }
 }
 
 impl std::error::Error for SizeError {}
 
-/// A grid of cells, its edge mode, its generation count, and each cell's age
-/// and trail.
+/// A grid of cells, its tiling, rule and edge mode, its generation count, and
+/// each cell's age and trail.
 pub struct Universe {
     grid: Grid,
     /// Scratch buffer the next generation is written into.
     next: Vec<u64>,
     edges: Edges,
+    tiling: Tiling,
+    rule: Rule,
     generation: u64,
     live_count: u32,
     /// Generations each cell has stayed alive, row-major, saturating. A dead
@@ -79,6 +125,8 @@ impl Clone for Universe {
             grid: self.grid.clone(),
             next: Vec::new(),
             edges: self.edges,
+            tiling: self.tiling,
+            rule: self.rule,
             generation: self.generation,
             live_count: self.live_count,
             ages: self.ages.clone(),
@@ -95,6 +143,8 @@ impl Clone for Universe {
         self.grid.words_per_row = source.grid.words_per_row;
         self.grid.cells.clone_from(&source.grid.cells);
         self.edges = source.edges;
+        self.tiling = source.tiling;
+        self.rule = source.rule;
         self.generation = source.generation;
         self.live_count = source.live_count;
         self.ages.clone_from(&source.ages);
@@ -104,17 +154,21 @@ impl Clone for Universe {
 }
 
 impl Universe {
-    /// An empty universe at generation 0.
-    pub fn new(width: u32, height: u32, edges: Edges) -> Result<Universe, SizeError> {
-        let sides = MIN_SIDE..=MAX_SIDE;
-        if !sides.contains(&width) || !sides.contains(&height) {
-            return Err(SizeError { width, height });
-        }
+    /// An empty universe at generation 0, under the tiling's default rule.
+    pub fn new(
+        width: u32,
+        height: u32,
+        edges: Edges,
+        tiling: Tiling,
+    ) -> Result<Universe, SizeError> {
+        SizeError::check(width, height, edges, tiling)?;
         let grid = Grid::new(width as usize, height as usize);
         let cells = grid.width * grid.height;
         Ok(Universe {
             next: Vec::new(),
             edges,
+            tiling,
+            rule: tiling.default_rule(),
             generation: 0,
             live_count: 0,
             ages: vec![0; cells],
@@ -134,6 +188,14 @@ impl Universe {
 
     pub fn edges(&self) -> Edges {
         self.edges
+    }
+
+    pub fn tiling(&self) -> Tiling {
+        self.tiling
+    }
+
+    pub fn rule(&self) -> Rule {
+        self.rule
     }
 
     pub fn generation(&self) -> u64 {
@@ -167,9 +229,20 @@ impl Universe {
         self.trail[y as usize * self.grid.width + x as usize]
     }
 
-    /// Takes effect from the next generation.
-    pub fn set_edges(&mut self, edges: Edges) {
+    /// Takes effect from the next generation. Refuses wrapping on a side the
+    /// tiling needs even, and then changes nothing.
+    pub fn set_edges(&mut self, edges: Edges) -> Result<(), SizeError> {
+        SizeError::check(self.width(), self.height(), edges, self.tiling)?;
         self.edges = edges;
+        Ok(())
+    }
+
+    /// Takes effect from the next generation. Refuses a rule the tiling
+    /// cannot run, and then changes nothing.
+    pub fn set_rule(&mut self, rule: Rule) -> Result<(), RuleError> {
+        rule.check(self.tiling)?;
+        self.rule = rule;
+        Ok(())
     }
 
     /// Sets one cell. Positions outside the grid are ignored. A cell set alive
@@ -219,7 +292,12 @@ impl Universe {
     /// Advances one generation.
     pub fn step(&mut self) {
         self.next.resize(self.grid.cells.len(), 0);
-        self.live_count = step::step(&self.grid, self.edges == Edges::Wrap, &mut self.next);
+        let wrap = self.edges == Edges::Wrap;
+        self.live_count = if self.tiling == Tiling::Square && self.rule == Rule::LIFE {
+            step::step(&self.grid, wrap, &mut self.next)
+        } else {
+            step_generic::step(&self.grid, self.tiling, self.rule, wrap, &mut self.next)
+        };
         ages::update(
             &self.grid,
             &self.next,

@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use glife_engine::{Axis, Edges, PasteMode, Pattern, Rect, Universe};
+use glife_engine::{Axis, Edges, PasteMode, Pattern, Rect, Tiling, Universe};
 
 use crate::history::{Cells, Entry, History};
 
@@ -96,11 +96,11 @@ impl Sim {
     /// universe filled to 25 % and playing as fast as possible.
     pub fn launch(bench: bool) -> Sim {
         let mut sim = if bench {
-            let mut universe = Universe::new(2048, 2048, Edges::Wrap).expect("valid size");
+            let mut universe = Universe::new(2048, 2048, Edges::Wrap, Tiling::Square).expect("valid size");
             universe.random_fill(0.25, os_seed());
             Sim::new(universe, Duration::ZERO)
         } else {
-            Sim::new(Universe::new(256, 256, Edges::Wrap).expect("valid size"), Duration::ZERO)
+            Sim::new(Universe::new(256, 256, Edges::Wrap, Tiling::Square).expect("valid size"), Duration::ZERO)
         };
         if bench {
             sim.handle(Command::SetSpeed(None), Duration::ZERO);
@@ -157,7 +157,7 @@ impl Sim {
         }
         match command {
             Command::NewUniverse { width, height, edges } => {
-                if let Ok(universe) = Universe::new(width, height, edges) {
+                if let Ok(universe) = Universe::new(width, height, edges, Tiling::Square) {
                     self.replace(universe, now);
                 }
             }
@@ -175,8 +175,7 @@ impl Sim {
                 self.deadline = now;
             }
             Command::SetEdges(edges) => {
-                if edges != self.universe.edges() {
-                    self.universe.set_edges(edges);
+                if edges != self.universe.edges() && self.universe.set_edges(edges).is_ok() {
                     self.new_revision();
                     // Undo cannot take the edge mode back, so no revision in
                     // the history matches the saved universe any more.
@@ -419,7 +418,7 @@ mod tests {
     const MS: fn(u64) -> Duration = Duration::from_millis;
 
     fn sim() -> Sim {
-        Sim::new(Universe::new(16, 16, Edges::Wrap).unwrap(), Duration::ZERO)
+        Sim::new(Universe::new(16, 16, Edges::Wrap, Tiling::Square).unwrap(), Duration::ZERO)
     }
 
     fn blinker(sim: &mut Sim) {
@@ -781,7 +780,7 @@ mod tests {
         sim.handle(Command::NewUniverse { width: 20, height: 20, edges: Edges::Wrap }, ZERO);
         assert!(!sim.snapshot().dirty);
         paint(&mut sim, &[(4, 4)], None);
-        sim.handle(Command::Load(Universe::new(30, 30, Edges::Dead).unwrap()), ZERO);
+        sim.handle(Command::Load(Universe::new(30, 30, Edges::Dead, Tiling::Square).unwrap()), ZERO);
         assert!(!sim.snapshot().dirty);
         assert_eq!(sim.history.len(), (0, 0));
     }
@@ -884,7 +883,7 @@ mod tests {
     #[test]
     #[ignore]
     fn undo_memory_of_50_whole_grid_fills_at_2048() {
-        let mut universe = Universe::new(2048, 2048, Edges::Wrap).unwrap();
+        let mut universe = Universe::new(2048, 2048, Edges::Wrap, Tiling::Square).unwrap();
         universe.random_fill(0.25, 1);
         let mut sim = Sim::new(universe, ZERO);
         sim.handle(Command::SetSpeed(None), ZERO);

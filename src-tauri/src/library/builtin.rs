@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use glife_engine::{Edges, PasteMode, Pattern, Rect, Universe};
+use glife_engine::{Edges, PasteMode, Pattern, Rect, Tiling, Universe};
 
 use super::Problem;
 use crate::pattern_file::PatternFile;
@@ -153,7 +153,7 @@ pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Resul
 
     let margin = 2 * period;
     let (w, h) = (pattern.width(), pattern.height());
-    let mut u = Universe::new(w + 2 * margin, h + 2 * margin, Edges::Dead)
+    let mut u = Universe::new(w + 2 * margin, h + 2 * margin, Edges::Dead, Tiling::Square)
         .map_err(|e| e.to_string())?;
     u.place(pattern, margin as i64, margin as i64, PasteMode::Or).map_err(|e| e.to_string())?;
 

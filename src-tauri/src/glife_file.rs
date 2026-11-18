@@ -6,7 +6,7 @@ use std::path::Path;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use glife_engine::{Edges, Pattern, Universe, MAX_SIDE, MIN_SIDE};
+use glife_engine::{Edges, Pattern, Tiling, Universe, MAX_SIDE, MIN_SIDE};
 use serde::{Deserialize, Serialize};
 
 const MAGIC: &[u8; 8] = b"GLIFE\0\r\n";
@@ -204,7 +204,9 @@ fn parse(data: &[u8]) -> Result<Universe, String> {
             }
         }
     }
-    Universe::from_parts(w, h, edges, header.generation, &cells, &all_ages).map_err(|e| e.to_string())
+    let tiling = Tiling::Square;
+    Universe::from_parts(w, h, edges, tiling, tiling.default_rule(), header.generation, &cells, &all_ages)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -212,7 +214,7 @@ mod tests {
     use super::*;
 
     fn sample() -> Universe {
-        let mut u = Universe::new(70, 40, Edges::Wrap).unwrap();
+        let mut u = Universe::new(70, 40, Edges::Wrap, Tiling::Square).unwrap();
         u.random_fill(0.3, 7);
         for _ in 0..25 {
             u.step();
@@ -338,7 +340,7 @@ mod tests {
         let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
         perms.set_readonly(true);
         std::fs::set_permissions(dir.path(), perms.clone()).unwrap();
-        let result = write(&path, &Universe::new(5, 5, Edges::Dead).unwrap());
+        let result = write(&path, &Universe::new(5, 5, Edges::Dead, Tiling::Square).unwrap());
         #[allow(clippy::permissions_set_readonly_false)]
         perms.set_readonly(false);
         std::fs::set_permissions(dir.path(), perms).unwrap();

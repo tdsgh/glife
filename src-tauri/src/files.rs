@@ -257,7 +257,7 @@ mod tests {
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
 
-    use glife_engine::{Edges, Universe};
+    use glife_engine::{Edges, Tiling, Universe};
 
     use super::*;
     use crate::clipboard::paste_text;
@@ -272,7 +272,7 @@ mod tests {
 
     impl Rig {
         fn new() -> Rig {
-            let sim = Sim::new(Universe::new(16, 16, Edges::Wrap).unwrap(), Duration::ZERO);
+            let sim = Sim::new(Universe::new(16, 16, Edges::Wrap, Tiling::Square).unwrap(), Duration::ZERO);
             let (queue, rx) = mpsc::channel();
             let dir = tempfile::tempdir().unwrap();
             let builtin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("patterns");

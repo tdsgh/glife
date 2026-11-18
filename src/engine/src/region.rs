@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use crate::{Edges, Pattern, SizeError, Universe};
+use crate::{Edges, Pattern, Rule, RuleError, SizeError, Tiling, Universe};
 
 /// A rectangle of grid cells: `w` by `h` with its top-left cell at `(x, y)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +57,8 @@ pub enum PartsError {
     PatternSize,
     /// There is not one age per cell.
     AgesLength,
+    /// The tiling cannot run the rule.
+    Rule(RuleError),
 }
 
 impl fmt::Display for PartsError {
@@ -65,6 +67,7 @@ impl fmt::Display for PartsError {
             PartsError::Size(e) => e.fmt(f),
             PartsError::PatternSize => f.write_str("pattern size differs from the universe's"),
             PartsError::AgesLength => f.write_str("ages do not hold one entry per cell"),
+            PartsError::Rule(e) => e.fmt(f),
         }
     }
 }
@@ -135,7 +138,10 @@ impl Universe {
     /// `(x, y)` touches: up to four on a wrapping grid, and the clipped one
     /// (none when it lies wholly outside) on a dead-edged grid.
     pub fn footprint(&self, w: u32, h: u32, x: i64, y: i64) -> Vec<Rect> {
-        self.segments(w, h, x, y).into_iter().map(|(r, _, _)| r).collect()
+        self.segments(w, h, x, y)
+            .into_iter()
+            .map(|(r, _, _)| r)
+            .collect()
     }
 
     /// Stamps `pattern` with its top-left cell at `(x, y)`, which may lie
@@ -253,7 +259,10 @@ impl Universe {
         for part in &capture.parts {
             let rect = part.rect;
             self.check_rect(rect);
-            let mut runs = part.ages.iter().flat_map(|&(age, n)| (0..n).map(move |_| age));
+            let mut runs = part
+                .ages
+                .iter()
+                .flat_map(|&(age, n)| (0..n).map(move |_| age));
             let mut n = 0;
             for y in rect.y..rect.y + rect.h {
                 for x in rect.x..rect.x + rect.w {
@@ -291,15 +300,19 @@ impl Universe {
 
     /// A universe from an opened file: the alive cells of `cells`, the
     /// `width * height` row-major `ages`, no trail.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         width: u32,
         height: u32,
         edges: Edges,
+        tiling: Tiling,
+        rule: Rule,
         generation: u64,
         cells: &Pattern,
         ages: &[u16],
     ) -> Result<Universe, PartsError> {
-        let mut u = Universe::new(width, height, edges).map_err(PartsError::Size)?;
+        let mut u = Universe::new(width, height, edges, tiling).map_err(PartsError::Size)?;
+        u.set_rule(rule).map_err(PartsError::Rule)?;
         if (cells.width(), cells.height()) != (width, height) {
             return Err(PartsError::PatternSize);
         }
@@ -348,7 +361,16 @@ impl Universe {
         let mut out = Vec::new();
         for &(gy, rh, py) in &spans(y, h, self.height()) {
             for &(gx, rw, px) in &columns {
-                out.push((Rect { x: gx, y: gy, w: rw, h: rh }, px, py));
+                out.push((
+                    Rect {
+                        x: gx,
+                        y: gy,
+                        w: rw,
+                        h: rh,
+                    },
+                    px,
+                    py,
+                ));
             }
         }
         out
