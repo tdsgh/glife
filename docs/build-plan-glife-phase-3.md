@@ -74,7 +74,11 @@ every grid, square included.
 
 - **`Rule { birth: u16, survival: u16 }`**, bit `n` set when a count of `n`
   neighbors gives birth or survival. It displays as `B…/S…` and parses from
-  that text, case-insensitive. `Rule::parse(text, tiling)` refuses a count
+  that text, case-insensitive. A list without a comma has one digit per
+  count (`B3/S23`); a list with a comma has numbers separated by commas
+  (`B4,10,11/S5,12`), and a lone count of 10 or more ends with a comma
+  (`S12,`). Display uses commas only when some count is 10 or more.
+  `Rule::parse(text, tiling)` refuses a count
   above the grid's neighbor count and birth on 0, with a message giving the
   reason.
 - **A rule per universe.** `Universe` holds its rule. A new universe starts
@@ -354,19 +358,21 @@ WP3.
 - `aligned(offset) -> Pattern`: the same shape with the other offset
   (hexagonal: realigned rows, one column wider; triangular: one empty column
   added on the left). Identity when the offset already matches.
+- `placement(anchor_x, anchor_y) -> (Pattern, i64, i64)` returns the pattern
+  as it will be stamped and its top-left, and is what `place` and the host's
+  `pending_cells` both use.
 
 ### `src/engine/src/region.rs`
 - `extract` sets tiling and offset.
 - `place` refuses a pattern of another tiling, and aligns as Decisions taken
-  says. A new `placement(&Pattern, anchor_x, anchor_y) -> (Pattern, i64, i64)`
-  returns the pattern as it will be stamped and its top-left, and is what
-  `place` and the host's `pending_cells` both use.
+  says.
 - `flip_rect` per Decisions taken, keeping ages and trail.
   `flip_footprint(rect, axis) -> Vec<Rect>`.
 
 ### Tests
 - Flipping twice on each axis gives back the same cells and offset on every
-  grid.
+  grid, except a hexagonal horizontal flip: twice gives the cells one column
+  right in a pattern two columns wider.
 - On each grid, a flipped pattern, run for a few generations of an
   asymmetric oscillator or glider, equals the flipped run of the original:
   the mirror is a true mirror under the grid's rule.
@@ -590,7 +596,9 @@ Proposes; the session applies after approval.
   rule per universe with a default and presets per grid, the square B3/S23
   step kept and a generic step for everything else; the rule in frame word 10
   relative to the grid's default;
-  pattern offset, alignment and true-mirror flips; pattern text as the
+  pattern offset, alignment and true-mirror flips, including that a
+  horizontal flip of a hexagonal or triangular selection may write one column
+  past it and a second flip does not undo that; pattern text as the
   exchange format off the square grid.
 - `docs/roadmap.md`: Phase 3 to Done; Risks and known costs as measured.
 - Root `CLAUDE.md` § Cross-cutting rules: add `fixtures/universe-hex-v1.glife`

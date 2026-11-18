@@ -182,7 +182,7 @@ fn parse(data: &[u8]) -> Result<Universe, String> {
     let alive = inflate(alive.ok_or("The file has no cells.")?, words_per_row * h as usize * 8, "cells")?;
     let words: Vec<u64> =
         alive.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
-    let mut cells = Pattern::new(w, h);
+    let mut cells = Pattern::new(w, h, Tiling::Square, false);
     let mut live = 0usize;
     for y in 0..h {
         for x in 0..w {

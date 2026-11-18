@@ -78,12 +78,12 @@ impl Host {
     /// Fills the pending slot, refusing a pattern larger than the grid.
     pub fn set_pending(&self, pattern: Pattern, name: String, comment: String, notices: Vec<String>) -> Result<PendingInfo, String> {
         let (w, h) = (pattern.width(), pattern.height());
-        let grid = {
+        let (grid, grid_tiling) = {
             let snapshot = self.latest.lock().unwrap().clone();
-            (snapshot.universe.width(), snapshot.universe.height())
+            ((snapshot.universe.width(), snapshot.universe.height()), snapshot.universe.tiling())
         };
         if w > grid.0 || h > grid.1 {
-            return Err(PlaceError { pattern: (w, h), grid }.to_string());
+            return Err(PlaceError { pattern: (w, h), grid, pattern_tiling: pattern.tiling(), grid_tiling }.to_string());
         }
         *self.pending.lock().unwrap() = Some(Arc::new(pattern));
         *self.pending_meta.lock().unwrap() = (name.clone(), comment.clone());
@@ -208,12 +208,12 @@ pub fn place(host: State<Host>, x: i64, y: i64, flip_h: bool, flip_v: bool, mode
         pattern = Arc::new(pattern.flipped(Axis::Vertical));
     }
     let (w, h) = (pattern.width(), pattern.height());
-    let grid = {
+    let (grid, grid_tiling) = {
         let snapshot = host.latest.lock().unwrap().clone();
-        (snapshot.universe.width(), snapshot.universe.height())
+        ((snapshot.universe.width(), snapshot.universe.height()), snapshot.universe.tiling())
     };
     if w > grid.0 || h > grid.1 {
-        return Err(PlaceError { pattern: (w, h), grid }.to_string());
+        return Err(PlaceError { pattern: (w, h), grid, pattern_tiling: pattern.tiling(), grid_tiling }.to_string());
     }
     host.send(Command::Place { pattern, x: x - (w / 2) as i64, y: y - (h / 2) as i64, mode })
 }

@@ -822,7 +822,7 @@ mod tests {
         sim.handle(Command::Step, ZERO);
         let before = state(&sim.universe);
 
-        let mut pattern = Pattern::new(4, 3);
+        let mut pattern = Pattern::new(4, 3, Tiling::Square, false);
         for (x, y) in [(0, 0), (3, 0), (1, 1), (2, 2)] {
             pattern.set(x, y, true);
         }
@@ -869,11 +869,11 @@ mod tests {
         let revision = sim.revision;
         sim.handle(Command::KillRect(Rect { x: 10, y: 0, w: 7, h: 1 }), ZERO);
         sim.handle(Command::FlipRect(Rect { x: 0, y: 0, w: 0, h: 4 }, Axis::Vertical), ZERO);
-        sim.handle(Command::Place { pattern: Arc::new(Pattern::new(17, 2)), x: 0, y: 0, mode: PasteMode::Or }, ZERO);
+        sim.handle(Command::Place { pattern: Arc::new(Pattern::new(17, 2, Tiling::Square, false)), x: 0, y: 0, mode: PasteMode::Or }, ZERO);
         sim.handle(Command::SetEdges(Edges::Dead), ZERO);
         let revision_after_edges = sim.revision;
         assert_ne!(revision_after_edges, revision);
-        sim.handle(Command::Place { pattern: Arc::new(Pattern::new(4, 4)), x: -10, y: 3, mode: PasteMode::Copy }, ZERO);
+        sim.handle(Command::Place { pattern: Arc::new(Pattern::new(4, 4, Tiling::Square, false)), x: -10, y: 3, mode: PasteMode::Copy }, ZERO);
         sim.handle(Command::Edit { cells: vec![(16, 0), (0, 99)], alive: true, stroke: None }, ZERO);
         assert_eq!(sim.revision, revision_after_edges);
         assert_eq!(sim.history.len(), (0, 0));

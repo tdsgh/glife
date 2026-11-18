@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use crate::pattern::{grid_offset, realigned_x, Flip};
 use crate::{Edges, Pattern, Rule, RuleError, SizeError, Tiling, Universe};
 
 /// A rectangle of grid cells: `w` by `h` with its top-left cell at `(x, y)`.
@@ -30,15 +31,26 @@ pub enum PasteMode {
     Copy,
 }
 
-/// A pattern wider or taller than the grid.
+/// A pattern that cannot be placed: one of another tiling than the grid's,
+/// or one wider or taller than the grid once lined up with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaceError {
     pub pattern: (u32, u32),
     pub grid: (u32, u32),
+    pub pattern_tiling: Tiling,
+    pub grid_tiling: Tiling,
 }
 
 impl fmt::Display for PlaceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.pattern_tiling != self.grid_tiling {
+            return write!(
+                f,
+                "a {} pattern cannot be placed on a {} grid",
+                self.pattern_tiling.id(),
+                self.grid_tiling.id()
+            );
+        }
         write!(
             f,
             "pattern of {} x {} does not fit a grid of {} x {}",
@@ -116,14 +128,16 @@ impl Capture {
 }
 
 impl Universe {
-    /// The cells of `rect` as a pattern.
+    /// The cells of `rect` as a pattern of the universe's tiling, with the
+    /// offset of the rectangle's origin.
     ///
     /// # Panics
     ///
     /// If `rect` is empty or reaches outside the grid.
     pub fn extract(&self, rect: Rect) -> Pattern {
         self.check_rect(rect);
-        let mut out = Pattern::new(rect.w, rect.h);
+        let offset = grid_offset(self.tiling, rect.x as i64, rect.y as i64);
+        let mut out = Pattern::new(rect.w, rect.h, self.tiling, offset);
         for dy in 0..rect.h {
             for dx in 0..rect.w {
                 if self.get(rect.x + dx, rect.y + dy) {
@@ -145,9 +159,15 @@ impl Universe {
     }
 
     /// Stamps `pattern` with its top-left cell at `(x, y)`, which may lie
-    /// outside the grid. Cells past an edge wrap to the opposite side on a
-    /// wrapping grid and are dropped on a dead-edged one. A cell set alive
-    /// from dead gets age 0; one killed leaves no trail.
+    /// outside the grid. Where the pattern's offset does not match the grid
+    /// at `(x, y)`, a hexagonal pattern is realigned (`Pattern::aligned`) and
+    /// a triangular one is stamped one cell right; `Pattern::placement` gives
+    /// the result. Cells past an edge wrap to the opposite side on a wrapping
+    /// grid and are dropped on a dead-edged one. A cell set alive from dead
+    /// gets age 0; one killed leaves no trail.
+    ///
+    /// Refuses a pattern of another tiling, and one wider or taller than the
+    /// grid once lined up.
     pub fn place(
         &mut self,
         pattern: &Pattern,
@@ -155,11 +175,18 @@ impl Universe {
         y: i64,
         mode: PasteMode,
     ) -> Result<(), PlaceError> {
+        let error = |pattern: &Pattern| PlaceError {
+            pattern: (pattern.width(), pattern.height()),
+            grid: (self.width(), self.height()),
+            pattern_tiling: pattern.tiling(),
+            grid_tiling: self.tiling,
+        };
+        if pattern.tiling() != self.tiling {
+            return Err(error(pattern));
+        }
+        let (pattern, x, y) = pattern.stamped_at(x, y);
         if pattern.width() > self.width() || pattern.height() > self.height() {
-            return Err(PlaceError {
-                pattern: (pattern.width(), pattern.height()),
-                grid: (self.width(), self.height()),
-            });
+            return Err(error(&pattern));
         }
         for (rect, px, py) in self.segments(pattern.width(), pattern.height(), x, y) {
             for dy in 0..rect.h {
@@ -191,28 +218,78 @@ impl Universe {
         }
     }
 
-    /// Mirrors the cells of `rect` in place; each keeps its age and trail.
+    /// Mirrors the cells of `rect` as `Pattern::flipped` mirrors a pattern
+    /// and writes them, each with its age and trail, at the rectangle's
+    /// origin, lined up with the grid as `place` lines up a pattern. They may
+    /// reach one column past the rectangle's right side, where they wrap or
+    /// are dropped as a placement's are. Cells of `rect` that no cell lands
+    /// on are killed with no trail and keep their ages.
     ///
     /// # Panics
     ///
     /// As `extract`.
     pub fn flip_rect(&mut self, rect: Rect, axis: Axis) {
         self.check_rect(rect);
-        let Rect { x, y, w, h } = rect;
-        match axis {
-            Axis::Horizontal => {
-                for row in y..y + h {
-                    for i in 0..w / 2 {
-                        self.swap_cells((x + i, row), (x + w - 1 - i, row));
-                    }
-                }
+        let destination = self.flip_destination(rect, axis);
+        let mut cells = Vec::with_capacity(rect.w as usize * rect.h as usize);
+        for y in rect.y..rect.y + rect.h {
+            for x in rect.x..rect.x + rect.w {
+                cells.push(self.cell_parts(x, y));
+                self.write_cell(x as usize, y as usize, false, self.age(x, y));
             }
-            Axis::Vertical => {
-                for i in 0..h / 2 {
-                    for col in x..x + w {
-                        self.swap_cells((col, y + i), (col, y + h - 1 - i));
-                    }
-                }
+        }
+        for dy in 0..rect.h {
+            for dx in 0..rect.w {
+                let (to_x, to_y) = destination(dx, dy);
+                let x = rect.x + to_x;
+                let x = match self.edges {
+                    Edges::Wrap => x % self.width(),
+                    Edges::Dead if x < self.width() => x,
+                    Edges::Dead => continue,
+                };
+                let parts = cells[(dy * rect.w + dx) as usize];
+                self.put_cell_parts(x, rect.y + to_y, parts);
+            }
+        }
+    }
+
+    /// The grid rectangles `flip_rect(rect, axis)` changes: `rect` and, when
+    /// the flipped cells reach past its right side, the column there, wrapped
+    /// or clipped.
+    ///
+    /// # Panics
+    ///
+    /// As `extract`.
+    pub fn flip_footprint(&self, rect: Rect, axis: Axis) -> Vec<Rect> {
+        self.check_rect(rect);
+        let destination = self.flip_destination(rect, axis);
+        let reach = (0..rect.h)
+            .map(|y| destination(0, y).0.max(destination(rect.w - 1, y).0) + 1)
+            .max()
+            .unwrap_or(rect.w);
+        let w = reach.max(rect.w).min(self.width());
+        self.footprint(w, rect.h, rect.x as i64, rect.y as i64)
+    }
+
+    /// Where `flip_rect` moves cell `(x, y)` of `rect`, both relative to the
+    /// rectangle's origin.
+    fn flip_destination(&self, rect: Rect, axis: Axis) -> impl Fn(u32, u32) -> (u32, u32) {
+        let tiling = self.tiling;
+        let offset = grid_offset(tiling, rect.x as i64, rect.y as i64);
+        let flip = Flip {
+            tiling,
+            axis,
+            offset,
+            width: rect.w,
+            height: rect.h,
+        };
+        let (_, _, flipped_offset) = flip.shape();
+        move |x, y| {
+            let (x, y) = flip.cell(x, y);
+            if flipped_offset == offset {
+                (x, y)
+            } else {
+                (realigned_x(tiling, flipped_offset, x, y), y)
             }
         }
     }
@@ -401,20 +478,19 @@ impl Universe {
         self.trailing[y * self.grid.words_per_row + x / 64] &= !(1 << (x % 64));
     }
 
-    /// Swaps two cells' alive state, age and trail.
-    fn swap_cells(&mut self, (ax, ay): (u32, u32), (bx, by): (u32, u32)) {
-        let (a, b) = (self.cell_parts(ax, ay), self.cell_parts(bx, by));
-        self.put_cell_parts(ax, ay, b);
-        self.put_cell_parts(bx, by, a);
-    }
-
     fn cell_parts(&self, x: u32, y: u32) -> (bool, u16, u8) {
         (self.get(x, y), self.age(x, y), self.trail(x, y))
     }
 
     fn put_cell_parts(&mut self, x: u32, y: u32, (alive, age, trail): (bool, u16, u8)) {
         let (x, y) = (x as usize, y as usize);
-        self.grid.set(x, y, alive);
+        if self.grid.set(x, y, alive) {
+            if alive {
+                self.live_count += 1;
+            } else {
+                self.live_count -= 1;
+            }
+        }
         let i = y * self.grid.width + x;
         self.ages[i] = age;
         self.trail[i] = trail;

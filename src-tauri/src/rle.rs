@@ -1,6 +1,6 @@
 //! Reading and writing Golly-style RLE text for B3/S23 patterns.
 
-use glife_engine::Pattern;
+use glife_engine::{Pattern, Tiling};
 
 const MAX_SIDE: u32 = 2048;
 
@@ -127,7 +127,7 @@ pub fn parse(text: &str) -> Result<Rle, String> {
         ));
     }
 
-    let mut pattern = Pattern::new(width, height);
+    let mut pattern = Pattern::new(width, height, Tiling::Square, false);
     let (mut x, mut y) = (0u64, 0u64);
     let mut run: Option<u64> = None;
     'body: for line in lines {
@@ -244,7 +244,7 @@ mod tests {
     use super::*;
 
     fn glider() -> Pattern {
-        let mut p = Pattern::new(3, 3);
+        let mut p = Pattern::new(3, 3, Tiling::Square, false);
         for (x, y) in [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)] {
             p.set(x, y, true);
         }
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn round_trip_keeps_cells_size_name_and_comment() {
         // A dead margin: 8 x 6 around a glider.
-        let mut p = Pattern::new(8, 6);
+        let mut p = Pattern::new(8, 6, Tiling::Square, false);
         for (x, y) in [(2, 1), (3, 2), (1, 3), (2, 3), (3, 3)] {
             p.set(x, y, true);
         }
@@ -273,7 +273,7 @@ mod tests {
             write(&glider(), None, None, None),
             "x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!\n"
         );
-        let mut wide = Pattern::new(200, 1);
+        let mut wide = Pattern::new(200, 1, Tiling::Square, false);
         for x in (0..200).step_by(2) {
             wide.set(x, 0, true);
         }
@@ -284,11 +284,11 @@ mod tests {
 
     #[test]
     fn empty_rows_and_empty_pattern_round_trip() {
-        let mut p = Pattern::new(4, 5);
+        let mut p = Pattern::new(4, 5, Tiling::Square, false);
         p.set(0, 0, true);
         p.set(3, 4, true);
         assert_eq!(parse(&write(&p, None, None, None)).unwrap().pattern, p);
-        let empty = Pattern::new(5, 5);
+        let empty = Pattern::new(5, 5, Tiling::Square, false);
         assert_eq!(parse(&write(&empty, None, None, None)).unwrap().pattern, empty);
     }
 

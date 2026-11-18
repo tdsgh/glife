@@ -683,7 +683,7 @@ fn set_edges_refuses_wrapping_on_an_odd_side_and_changes_nothing() {
 fn from_parts_takes_the_tiling_and_rule() {
     let tiling = Tiling::Triangular12;
     let rule = tiling.presets()[1].1;
-    let mut cells = Pattern::new(6, 4);
+    let mut cells = Pattern::new(6, 4, Tiling::Square, false);
     cells.set(2, 1, true);
     let ages = vec![0u16; 24];
     let u = Universe::from_parts(6, 4, Edges::Wrap, tiling, rule, 5, &cells, &ages).unwrap();
@@ -699,7 +699,7 @@ fn from_parts_takes_the_tiling_and_rule() {
             neighbors: 12
         }))
     );
-    let cells = Pattern::new(5, 4);
+    let cells = Pattern::new(5, 4, Tiling::Square, false);
     let ages = vec![0u16; 20];
     assert!(matches!(
         Universe::from_parts(5, 4, Edges::Wrap, tiling, rule, 5, &cells, &ages),
@@ -826,3 +826,5 @@ fn every_wp1_pattern_keeps_its_kind_under_its_grids_default_rule() {
         assert_eq!(alive(&u), expected, "{name} after {period} generations");
     }
 }
+
+mod patterns;

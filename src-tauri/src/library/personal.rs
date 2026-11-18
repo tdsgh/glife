@@ -237,10 +237,12 @@ fn read_entry(path: &Path, file_name: String) -> Result<Entry, String> {
 
 #[cfg(test)]
 mod tests {
+    use glife_engine::Tiling;
+
     use super::*;
 
     fn glider() -> Pattern {
-        let mut p = Pattern::new(3, 3);
+        let mut p = Pattern::new(3, 3, Tiling::Square, false);
         for (x, y) in [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)] {
             p.set(x, y, true);
         }
@@ -258,7 +260,7 @@ mod tests {
         let (_d, lib) = library();
         assert!(lib.list().0.is_empty());
         lib.save("Zebra", Some("stripes\nof two lines"), &glider(), false).unwrap();
-        lib.save("apple", None, &Pattern::new(4, 2), false).unwrap();
+        lib.save("apple", None, &Pattern::new(4, 2, Tiling::Square, false), false).unwrap();
         let (entries, problems) = lib.list();
         assert!(problems.is_empty());
         let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
@@ -274,7 +276,7 @@ mod tests {
     fn same_name_without_replace_fails_ignoring_case() {
         let (_d, lib) = library();
         lib.save("Glider", None, &glider(), false).unwrap();
-        assert_eq!(lib.save("glider", None, &Pattern::new(2, 2), false), Err(Error::NameTaken));
+        assert_eq!(lib.save("glider", None, &Pattern::new(2, 2, Tiling::Square, false), false), Err(Error::NameTaken));
         assert_eq!(lib.list().0[0].pattern, glider());
     }
 
@@ -284,7 +286,7 @@ mod tests {
         lib.save("Glider", Some("mine"), &glider(), false).unwrap();
         let before = lib.list().0.remove(0);
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        lib.save("GLIDER", None, &Pattern::new(2, 2), true).unwrap();
+        lib.save("GLIDER", None, &Pattern::new(2, 2, Tiling::Square, false), true).unwrap();
         let (entries, _) = lib.list();
         assert_eq!(entries.len(), 1);
         let after = &entries[0];
@@ -292,7 +294,7 @@ mod tests {
         assert_eq!(after.comment.as_deref(), Some("mine"));
         assert_eq!(after.created, before.created);
         assert_ne!(after.changed, before.changed);
-        assert_eq!(after.pattern, Pattern::new(2, 2));
+        assert_eq!(after.pattern, Pattern::new(2, 2, Tiling::Square, false));
         lib.save("GLIDER", Some("new"), &glider(), true).unwrap();
         assert_eq!(lib.list().0[0].comment.as_deref(), Some("new"));
     }
@@ -301,7 +303,7 @@ mod tests {
     fn rename_to_a_taken_name_fails_unless_replacing() {
         let (_d, lib) = library();
         lib.save("A", None, &glider(), false).unwrap();
-        lib.save("B", None, &Pattern::new(2, 2), false).unwrap();
+        lib.save("B", None, &Pattern::new(2, 2, Tiling::Square, false), false).unwrap();
         assert_eq!(lib.rename("A", "b", false), Err(Error::NameTaken));
         assert_eq!(lib.rename("Nope", "C", false), Err(Error::NotFound));
         lib.rename("A", "C", false).unwrap();

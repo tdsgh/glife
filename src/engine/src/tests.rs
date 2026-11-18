@@ -692,7 +692,7 @@ fn set_edges_applies_from_the_next_generation() {
 use crate::{Axis, PasteMode, Pattern, Rect};
 
 fn pattern(w: u32, h: u32, cells: &[(u32, u32)]) -> Pattern {
-    let mut p = Pattern::new(w, h);
+    let mut p = Pattern::new(w, h, Tiling::Square, false);
     for &(x, y) in cells {
         p.set(x, y, true);
     }
@@ -794,17 +794,36 @@ fn place_on_dead_edges_drops_the_outside_part() {
 fn place_refuses_a_pattern_larger_than_the_grid() {
     let mut u = Universe::new(8, 6, Edges::Wrap, Tiling::Square).unwrap();
     let err = u
-        .place(&Pattern::new(9, 2), 0, 0, PasteMode::Or)
+        .place(
+            &Pattern::new(9, 2, Tiling::Square, false),
+            0,
+            0,
+            PasteMode::Or,
+        )
         .unwrap_err();
     assert_eq!((err.pattern, err.grid), ((9, 2), (8, 6)));
-    assert!(u.place(&Pattern::new(2, 7), 0, 0, PasteMode::Or).is_err());
-    assert!(u.place(&Pattern::new(8, 6), 0, 0, PasteMode::Or).is_ok());
+    assert!(u
+        .place(
+            &Pattern::new(2, 7, Tiling::Square, false),
+            0,
+            0,
+            PasteMode::Or
+        )
+        .is_err());
+    assert!(u
+        .place(
+            &Pattern::new(8, 6, Tiling::Square, false),
+            0,
+            0,
+            PasteMode::Or
+        )
+        .is_ok());
 }
 
 #[test]
 fn footprint_agrees_with_where_place_writes() {
     let full = |w, h| {
-        let mut p = Pattern::new(w, h);
+        let mut p = Pattern::new(w, h, Tiling::Square, false);
         for y in 0..h {
             for x in 0..w {
                 p.set(x, y, true);
@@ -1058,15 +1077,15 @@ fn whole_grid_capture_is_compact() {
 
 #[test]
 fn thumbnail_downsamples_and_keeps_single_cells() {
-    let mut big = Pattern::new(2048, 2048);
+    let mut big = Pattern::new(2048, 2048, Tiling::Square, false);
     big.set(2047, 2047, true);
     let t = big.thumbnail(64);
     assert_eq!((t.width(), t.height()), (64, 64));
     assert_eq!(t.live_count(), 1);
-    let mut one = Pattern::new(2048, 2048);
+    let mut one = Pattern::new(2048, 2048, Tiling::Square, false);
     one.set(1000, 5, true);
     assert_eq!(one.thumbnail(64).live_count(), 1);
-    let wide = Pattern::new(2000, 100).thumbnail(64);
+    let wide = Pattern::new(2000, 100, Tiling::Square, false).thumbnail(64);
     assert_eq!((wide.width(), wide.height()), (64, 4));
     let small = pattern(10, 3, &[(0, 0), (9, 2), (4, 1)]);
     assert_eq!(small.thumbnail(64), small);
@@ -1083,7 +1102,7 @@ fn pattern_words_and_flip() {
     assert!(p.flipped(Axis::Horizontal).get(39, 0));
     assert!(p.flipped(Axis::Vertical).get(39, 0));
     assert!(!p.get(40, 0));
-    assert!(Pattern::new(1, 1).live_count() == 0);
+    assert!(Pattern::new(1, 1, Tiling::Square, false).live_count() == 0);
 }
 
 #[test]

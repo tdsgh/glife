@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn a_taken_library_name_is_reported_not_raised() {
         let rig = Rig::new();
-        let pattern = Pattern::new(2, 2);
+        let pattern = Pattern::new(2, 2, Tiling::Square, false);
         rig.host.personal.save("Mine", None, &pattern, false).unwrap();
         let taken = rig.host.personal.save("mine", None, &pattern, false);
         assert_eq!(crate::library_cmds::nothing(taken).unwrap(), serde_json::json!({ "nameTaken": true }));
