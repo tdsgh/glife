@@ -22,7 +22,7 @@ saved at each step of the way.
 |---|---|---|---|
 | 1 | Classic Life | Done | [glife-phase-1.md](hist/glife-phase-1.md) |
 | 2 | Patterns | Done | [glife-phase-2.md](hist/glife-phase-2.md) |
-| 3 | Non-square tilings | Planned | — |
+| 3 | Non-square tilings | In progress | [glife-phase-3.md](glife-phase-3.md) |
 | 4 | Closed surfaces | Planned | — |
 | 5 | 3D universes | Planned | — |
 | 6 | Other rulesets | Planned | — |
@@ -78,13 +78,16 @@ Working with patterns rather than single cells.
 
 The same experience on grids whose cells are not squares.
 
-- **In.** Hexagonal and triangular grids, chosen when a universe is created.
-  Each tiling has its own neighborhood and a default rule suited to it. Every
-  tool from Phases 1–2 works on these grids: drawing, selection, the pattern
-  library, saving and opening.
+- **In.** Hexagonal and triangular grids, chosen when a universe is created;
+  the triangular grid with either 12 or 3 neighbors. Each grid has its own
+  neighborhood and a default rule suited to it. Every tool from Phases 1–2
+  works on these grids: drawing, selection, the pattern library, saving and
+  opening.
 - **Out.** Aperiodic tilings such as Penrose (see Open questions).
-- **Constraint.** RLE describes square grids only, so patterns on these tilings
-  need a glife file format.
+- **Constraint.** Plain RLE describes square grids; Golly and LifeViewer write
+  hexagonal and triangular patterns as RLE with a rule suffix on an emulated
+  square grid. In this phase glife exchanges patterns on these grids in its
+  own format.
 
 ### Phase 4 — Closed surfaces
 
