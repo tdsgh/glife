@@ -79,7 +79,11 @@ export const place = (x: number, y: number, flipH: boolean, flipV: boolean, mode
 export const pendingCells = (flipH = false, flipV = false, x = 0, y = 0) =>
   invoke<ArrayBuffer>("pending_cells", { flipH, flipV, x, y });
 
-/** Reads the clipboard's RLE into the pending slot; rejects with a message when there is none. */
+/**
+ * Reads the clipboard into the pending slot: glife pattern text or RLE. Rejects with a message when
+ * there is none, the pattern is for another grid, or it is RLE and the universe is not square.
+ * A pattern made under another rule of the grid comes back with a notice.
+ */
 export const paste = () => invoke<PendingInfo>("paste");
 export const copySelection = (rect: Rect) => invoke<void>("copy_selection", { ...rect });
 export const cutSelection = (rect: Rect) => invoke<void>("cut_selection", { ...rect });
@@ -87,6 +91,9 @@ export const cutSelection = (rect: Rect) => invoke<void>("cut_selection", { ...r
 export interface PendingInfo {
   width: number;
   height: number;
+  tiling: TilingId;
+  /** The rule the pattern was made under, as `B…/S…` text. */
+  rule: string;
   name: string;
   comment: string;
   notices: string[];
@@ -102,11 +109,14 @@ export const fetchFrame = (region: Region, since: number, layers: number) =>
 /** Where a pattern comes from: a built-in id, a personal name, or the pending slot. */
 export type Source = { builtin: string } | { personal: string } | "pending";
 
-/** Fills the pending slot from a library entry or keeps the current one. */
+/** Fills the pending slot from a library entry or keeps the current one; rejects for an entry of another grid. */
 export const beginPlace = (source: Source) => invoke<PendingInfo>("begin_place", { source });
 
 export interface BuiltinEntry {
   id: string;
+  tiling: TilingId;
+  /** The rule the pattern was made under and is checked against. */
+  rule: string;
   name: string;
   category: "still-life" | "oscillator" | "spaceship" | "gun" | "methuselah";
   description: string;
@@ -119,6 +129,8 @@ export interface BuiltinEntry {
 
 export interface PersonalEntry {
   name: string;
+  tiling: TilingId;
+  rule: string;
   comment: string;
   width: number;
   height: number;
@@ -172,14 +184,20 @@ export interface OpenInfo {
 
 /** Replaces the universe with a glife or RLE file the operator picks; null if cancelled. Run `confirmDiscard` first. */
 export const open = () => invoke<OpenInfo | null>("open");
-/** Reads an RLE file into the pending slot; null if cancelled. */
+/** Reads an RLE file into the pending slot; null if cancelled; rejects on a non-square universe. */
 export const importRle = () => invoke<PendingInfo | null>("import_rle");
+/** Rejects for a pattern of a non-square grid. */
 export const exportRle = (source: { selection: Rect } | "universe" | Source) => invoke<void>("export_rle", { source });
+/** Reads a glife pattern file (`.toml`) into the pending slot; null if cancelled. Rejects for another grid's pattern. */
+export const importPattern = () => invoke<PendingInfo | null>("import_pattern");
+/** Writes a pattern of any grid to a pattern file the operator names; does nothing if cancelled. */
+export const exportPattern = (source: { selection: Rect } | "universe" | Source) => invoke<void>("export_pattern", { source });
 
 export type EditTarget = "text" | "universe";
 /** Swaps the Edit menu for the platform's text items while a text field has focus. */
 export const setEditTarget = (target: EditTarget) => invoke<void>("set_edit_target", { target });
-export const setMenuState = (state: { canUndo: boolean; canRedo: boolean; hasSelection: boolean; playing: boolean }) =>
+/** `tiling` is the open universe's grid; the RLE menu items are enabled only on the square grid, which is also the default. */
+export const setMenuState = (state: { canUndo: boolean; canRedo: boolean; hasSelection: boolean; playing: boolean; tiling?: TilingId }) =>
   invoke<void>("set_menu_state", state);
 
 /** Sets the window title, e.g. `• name.glife — glife`. Does nothing outside the Tauri window. */
@@ -190,5 +208,5 @@ export const setTitle = async (title: string) => {
     // no window (tests, a plain browser)
   }
 };
-/** Menu clicks: the item id (`new`, `open`, `save`, `save_as`, `import_rle`, `export_rle`, `undo`, `redo`, `cut`, `copy`, `paste`, `delete`, `select_all`, `flip_h`, `flip_v`). Resolves to an unlisten function. */
+/** Menu clicks: the item id (`new`, `open`, `save`, `save_as`, `import_rle`, `export_rle`, `import_pattern`, `export_pattern`, `undo`, `redo`, `cut`, `copy`, `paste`, `delete`, `select_all`, `flip_h`, `flip_v`). Resolves to an unlisten function. */
 export const onMenu = (handler: (id: string) => void) => listen<string>("menu", (e) => handler(e.payload));

@@ -2,6 +2,7 @@
 
 use std::sync::Mutex;
 
+use glife_engine::Tiling;
 use serde::Deserialize;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
@@ -17,6 +18,8 @@ pub struct MenuState {
     undo: Vec<MenuItem<Wry>>,
     redo: Vec<MenuItem<Wry>>,
     selection_items: Vec<MenuItem<Wry>>,
+    /// Import RLE and Export RLE, which only the square grid can use.
+    rle_items: Vec<MenuItem<Wry>>,
     text_target: Mutex<bool>,
 }
 
@@ -27,6 +30,7 @@ pub struct MenuFlags {
     pub can_redo: bool,
     pub has_selection: bool,
     pub playing: bool,
+    pub square: bool,
 }
 
 fn item(app: &AppHandle, id: &str, text: &str, accel: Option<&str>) -> tauri::Result<MenuItem<Wry>> {
@@ -42,6 +46,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let save_as = item(app, "save_as", "Save As…", Some("CmdOrCtrl+Shift+S"))?;
     let import = item(app, "import_rle", "Import RLE…", None)?;
     let export = item(app, "export_rle", "Export RLE…", None)?;
+    let import_pattern = item(app, "import_pattern", "Import Pattern…", None)?;
+    let export_pattern = item(app, "export_pattern", "Export Pattern…", None)?;
     let quit = item(app, "quit", if mac { "Quit glife" } else { "Quit" }, Some("CmdOrCtrl+Q"))?;
     let sep = || PredefinedMenuItem::separator(app);
 
@@ -79,7 +85,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     }
 
     let file = Submenu::with_id(app, "file", "File", true)?;
-    file.append_items(&[&new, &open, &sep()?, &save, &save_as, &sep()?, &import, &export])?;
+    file.append_items(&[&new, &open, &sep()?, &save, &save_as, &sep()?, &import, &export, &sep()?, &import_pattern, &export_pattern])?;
 
     let menu = Menu::new(app)?;
     if mac {
@@ -116,6 +122,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         undo: vec![undo],
         redo: redos,
         selection_items: vec![cut, copy, delete, flip_h, flip_v],
+        rle_items: vec![import, export],
         text_target: Mutex::new(false),
     });
     Ok(menu)
@@ -190,6 +197,9 @@ impl MenuState {
         for i in &self.selection_items {
             i.set_enabled(f.has_selection)?;
         }
+        for i in &self.rle_items {
+            i.set_enabled(f.square)?;
+        }
         Ok(())
     }
 }
@@ -206,6 +216,17 @@ pub fn set_edit_target(menu: State<MenuState>, target: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn set_menu_state(menu: State<MenuState>, can_undo: bool, can_redo: bool, has_selection: bool, playing: bool) -> Result<(), String> {
-    menu.set_flags(MenuFlags { can_undo, can_redo, has_selection, playing }).map_err(|e| e.to_string())
+pub fn set_menu_state(
+    menu: State<MenuState>,
+    can_undo: bool,
+    can_redo: bool,
+    has_selection: bool,
+    playing: bool,
+    tiling: Option<String>,
+) -> Result<(), String> {
+    let square = match tiling.as_deref() {
+        None => true,
+        Some(id) => Tiling::parse(id).ok_or_else(|| format!("unknown grid {id:?}"))? == Tiling::Square,
+    };
+    menu.set_flags(MenuFlags { can_undo, can_redo, has_selection, playing, square }).map_err(|e| e.to_string())
 }

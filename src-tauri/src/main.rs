@@ -105,6 +105,8 @@ fn main() {
             files::open,
             files::import_rle,
             files::export_rle,
+            files::import_pattern,
+            files::export_pattern,
             menu::set_edit_target,
             menu::set_menu_state,
         ])

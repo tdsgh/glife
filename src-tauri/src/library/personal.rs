@@ -2,12 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
-use glife_engine::Pattern;
+use glife_engine::{Pattern, Rule};
 
 use super::Problem;
 use crate::glife_file::write_atomic;
 use crate::pattern_file::{self, PatternFile};
-use crate::rle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -34,6 +33,8 @@ pub struct Entry {
     pub name: String,
     pub comment: Option<String>,
     pub pattern: Pattern,
+    /// The rule the pattern was made under.
+    pub rule: Rule,
     pub live: u32,
     pub created: Option<String>,
     pub changed: Option<String>,
@@ -146,29 +147,30 @@ impl Library {
             .map_err(|e| Error::Other(format!("Could not write the pattern: {e}")))
     }
 
-    /// Saves `pattern` under `name`. A name already taken fails with
-    /// `NameTaken` unless `replace`, which keeps the old comment when
-    /// `comment` is empty, keeps `created` and updates `changed`.
+    /// Saves `pattern`, made under `rule`, as `name`, with its grid and offset.
+    /// A name already taken, on any grid, fails with `NameTaken` unless
+    /// `replace`, which keeps the old comment when `comment` is empty, keeps
+    /// `created` and updates `changed`.
     pub fn save(
         &self,
         name: &str,
         comment: Option<&str>,
         pattern: &Pattern,
+        rule: Rule,
         replace: bool,
     ) -> Result<(), Error> {
         let name = Self::check_name(name)?;
-        let rle = rle::write(pattern, None, None, None);
         let comment = comment.filter(|c| !c.is_empty());
+        let new = PatternFile::personal(pattern, rule, name, comment);
         match self.find(name) {
-            None => {
-                let file = PatternFile::personal(name, comment, rle);
-                self.write(&self.new_file_name(name), &file)
-            }
+            None => self.write(&self.new_file_name(name), &new),
             Some(_) if !replace => Err(Error::NameTaken),
             Some(old) => {
                 let mut file = read_file(&self.dir.join(&old.file)).map_err(Error::Other)?;
                 file.name = name.into();
-                file.rle = rle;
+                file.tiling = new.tiling;
+                file.offset = new.offset;
+                file.rle = new.rle;
                 if let Some(c) = comment {
                     file.comment = Some(c.into());
                 }
@@ -223,13 +225,14 @@ fn read_file(path: &Path) -> Result<PatternFile, String> {
 
 fn read_entry(path: &Path, file_name: String) -> Result<Entry, String> {
     let file = read_file(path)?;
-    let pattern = file.rle()?.pattern;
+    let (pattern, rule) = file.cells()?;
     Ok(Entry {
         file: file_name,
         name: file.name,
         comment: file.comment,
         live: pattern.live_count(),
         pattern,
+        rule,
         created: file.created,
         changed: file.changed,
     })
@@ -240,6 +243,10 @@ mod tests {
     use glife_engine::Tiling;
 
     use super::*;
+
+    fn life() -> Rule {
+        Tiling::Square.default_rule()
+    }
 
     fn glider() -> Pattern {
         let mut p = Pattern::new(3, 3, Tiling::Square, false);
@@ -259,8 +266,8 @@ mod tests {
     fn save_and_list() {
         let (_d, lib) = library();
         assert!(lib.list().0.is_empty());
-        lib.save("Zebra", Some("stripes\nof two lines"), &glider(), false).unwrap();
-        lib.save("apple", None, &Pattern::new(4, 2, Tiling::Square, false), false).unwrap();
+        lib.save("Zebra", Some("stripes\nof two lines"), &glider(), life(), false).unwrap();
+        lib.save("apple", None, &Pattern::new(4, 2, Tiling::Square, false), life(), false).unwrap();
         let (entries, problems) = lib.list();
         assert!(problems.is_empty());
         let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
@@ -275,18 +282,18 @@ mod tests {
     #[test]
     fn same_name_without_replace_fails_ignoring_case() {
         let (_d, lib) = library();
-        lib.save("Glider", None, &glider(), false).unwrap();
-        assert_eq!(lib.save("glider", None, &Pattern::new(2, 2, Tiling::Square, false), false), Err(Error::NameTaken));
+        lib.save("Glider", None, &glider(), life(), false).unwrap();
+        assert_eq!(lib.save("glider", None, &Pattern::new(2, 2, Tiling::Square, false), life(), false), Err(Error::NameTaken));
         assert_eq!(lib.list().0[0].pattern, glider());
     }
 
     #[test]
     fn replace_keeps_comment_and_created_and_updates_changed() {
         let (_d, lib) = library();
-        lib.save("Glider", Some("mine"), &glider(), false).unwrap();
+        lib.save("Glider", Some("mine"), &glider(), life(), false).unwrap();
         let before = lib.list().0.remove(0);
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        lib.save("GLIDER", None, &Pattern::new(2, 2, Tiling::Square, false), true).unwrap();
+        lib.save("GLIDER", None, &Pattern::new(2, 2, Tiling::Square, false), life(), true).unwrap();
         let (entries, _) = lib.list();
         assert_eq!(entries.len(), 1);
         let after = &entries[0];
@@ -295,15 +302,15 @@ mod tests {
         assert_eq!(after.created, before.created);
         assert_ne!(after.changed, before.changed);
         assert_eq!(after.pattern, Pattern::new(2, 2, Tiling::Square, false));
-        lib.save("GLIDER", Some("new"), &glider(), true).unwrap();
+        lib.save("GLIDER", Some("new"), &glider(), life(), true).unwrap();
         assert_eq!(lib.list().0[0].comment.as_deref(), Some("new"));
     }
 
     #[test]
     fn rename_to_a_taken_name_fails_unless_replacing() {
         let (_d, lib) = library();
-        lib.save("A", None, &glider(), false).unwrap();
-        lib.save("B", None, &Pattern::new(2, 2, Tiling::Square, false), false).unwrap();
+        lib.save("A", None, &glider(), life(), false).unwrap();
+        lib.save("B", None, &Pattern::new(2, 2, Tiling::Square, false), life(), false).unwrap();
         assert_eq!(lib.rename("A", "b", false), Err(Error::NameTaken));
         assert_eq!(lib.rename("Nope", "C", false), Err(Error::NotFound));
         lib.rename("A", "C", false).unwrap();
@@ -321,7 +328,7 @@ mod tests {
     #[test]
     fn comment_and_delete() {
         let (_d, lib) = library();
-        lib.save("A", Some("x"), &glider(), false).unwrap();
+        lib.save("A", Some("x"), &glider(), life(), false).unwrap();
         lib.set_comment("a", "line 1\nline 2").unwrap();
         assert_eq!(lib.list().0[0].comment.as_deref(), Some("line 1\nline 2"));
         lib.set_comment("A", "").unwrap();
@@ -334,28 +341,28 @@ mod tests {
     #[test]
     fn file_names_are_safe_and_collisions_get_a_number() {
         let (_d, lib) = library();
-        lib.save("a/b:c", None, &glider(), false).unwrap();
-        lib.save("a_b:c", None, &glider(), false).unwrap();
-        lib.save("CON", None, &glider(), false).unwrap();
+        lib.save("a/b:c", None, &glider(), life(), false).unwrap();
+        lib.save("a_b:c", None, &glider(), life(), false).unwrap();
+        lib.save("CON", None, &glider(), life(), false).unwrap();
         let (entries, _) = lib.list();
         let mut files: Vec<_> = entries.iter().map(|e| e.file.as_str()).collect();
         files.sort();
         assert_eq!(files, ["CON_.toml", "a_b_c 2.toml", "a_b_c.toml"]);
-        assert!(lib.save("  ", None, &glider(), false).is_err());
-        assert!(lib.save("two\nlines", None, &glider(), false).is_err());
+        assert!(lib.save("  ", None, &glider(), life(), false).is_err());
+        assert!(lib.save("two\nlines", None, &glider(), life(), false).is_err());
     }
 
     #[test]
     fn unreadable_file_is_listed_and_not_touched() {
         let (_d, lib) = library();
-        lib.save("Good", None, &glider(), false).unwrap();
+        lib.save("Good", None, &glider(), life(), false).unwrap();
         let bad = lib.dir().join("bad.toml");
         std::fs::write(&bad, "name = [ broken").unwrap();
         let (entries, problems) = lib.list();
         assert_eq!(entries.len(), 1);
         assert_eq!(problems.len(), 1);
         assert_eq!(problems[0].file, "bad.toml");
-        lib.save("Another", None, &glider(), false).unwrap();
+        lib.save("Another", None, &glider(), life(), false).unwrap();
         lib.delete("Good").unwrap();
         assert_eq!(std::fs::read_to_string(&bad).unwrap(), "name = [ broken");
     }

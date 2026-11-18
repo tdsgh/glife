@@ -18,12 +18,15 @@ use crate::library::personal::Library;
 use crate::library::Problem;
 use crate::sim::{self, os_seed, Command, Latest};
 
-/// A pattern waiting to be placed: its size, name, comment and notices.
+/// A pattern waiting to be placed: its size, grid, rule, name, comment and notices.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingInfo {
     pub width: u32,
     pub height: u32,
+    pub tiling: &'static str,
+    /// The rule the pattern was made under, as text.
+    pub rule: String,
     pub name: String,
     pub comment: String,
     pub notices: Vec<String>,
@@ -43,8 +46,8 @@ pub struct Host {
     pub latest: Latest,
     /// The pattern being placed.
     pub pending: Mutex<Option<Arc<Pattern>>>,
-    /// Name and comment of the pending pattern.
-    pub pending_meta: Mutex<(String, String)>,
+    /// Name, comment and rule of the pending pattern.
+    pub pending_meta: Mutex<(String, String, Rule)>,
     pub file: Mutex<FileState>,
     pub builtin: Vec<builtin::Entry>,
     pub builtin_problems: Vec<Problem>,
@@ -66,7 +69,7 @@ impl Host {
             queue,
             latest,
             pending: Mutex::new(None),
-            pending_meta: Mutex::new(Default::default()),
+            pending_meta: Mutex::new((String::new(), String::new(), Tiling::Square.default_rule())),
             file: Mutex::new(FileState::default()),
             builtin,
             builtin_problems,
@@ -75,19 +78,32 @@ impl Host {
         })
     }
 
-    /// Fills the pending slot, refusing a pattern larger than the grid.
-    pub fn set_pending(&self, pattern: Pattern, name: String, comment: String, notices: Vec<String>) -> Result<PendingInfo, String> {
+    /// The grid and rule of the universe as of the latest snapshot.
+    pub fn grid(&self) -> (Tiling, Rule) {
+        let snapshot = self.latest.lock().unwrap().clone();
+        (snapshot.universe.tiling(), snapshot.universe.rule())
+    }
+
+    /// Fills the pending slot, refusing a pattern of another grid or larger
+    /// than the grid. A pattern made under another rule of the grid is
+    /// accepted with a notice naming its rule.
+    pub fn set_pending(&self, pattern: Pattern, rule: Rule, name: String, comment: String, mut notices: Vec<String>) -> Result<PendingInfo, String> {
         let (w, h) = (pattern.width(), pattern.height());
-        let (grid, grid_tiling) = {
+        let (grid, grid_tiling, grid_rule) = {
             let snapshot = self.latest.lock().unwrap().clone();
-            ((snapshot.universe.width(), snapshot.universe.height()), snapshot.universe.tiling())
+            let u = &snapshot.universe;
+            ((u.width(), u.height()), u.tiling(), u.rule())
         };
-        if w > grid.0 || h > grid.1 {
+        if pattern.tiling() != grid_tiling || w > grid.0 || h > grid.1 {
             return Err(PlaceError { pattern: (w, h), grid, pattern_tiling: pattern.tiling(), grid_tiling }.to_string());
         }
+        if rule != grid_rule {
+            notices.push(format!("This pattern was made under {rule}; this universe runs {grid_rule}."));
+        }
+        let info = PendingInfo { width: w, height: h, tiling: pattern.tiling().id(), rule: rule.to_string(), name, comment, notices };
         *self.pending.lock().unwrap() = Some(Arc::new(pattern));
-        *self.pending_meta.lock().unwrap() = (name.clone(), comment.clone());
-        Ok(PendingInfo { width: w, height: h, name, comment, notices })
+        *self.pending_meta.lock().unwrap() = (info.name.clone(), info.comment.clone(), rule);
+        Ok(info)
     }
 
     pub fn send(&self, command: Command) -> Result<(), String> {

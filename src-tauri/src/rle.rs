@@ -1,6 +1,7 @@
-//! Reading and writing Golly-style RLE text for B3/S23 patterns.
+//! Reading and writing Golly-style RLE text. Square patterns are plain RLE; a
+//! pattern file reuses the format for the other grids.
 
-use glife_engine::{Pattern, Tiling};
+use glife_engine::{Pattern, Rule, Tiling};
 
 const MAX_SIDE: u32 = 2048;
 
@@ -18,14 +19,29 @@ pub struct Rle {
     pub pattern: Pattern,
     pub name: Option<String>,
     pub comment: Option<String>,
-    /// The rule as written in the header, without the grid suffix.
+    /// The rule as written in the header, without the grid suffix; the grid's
+    /// default when the header has none.
     pub rule: String,
     pub bounded: Option<Bounded>,
     pub notices: Vec<String>,
 }
 
-fn is_conway(rule: &str) -> bool {
-    matches!(rule.to_ascii_uppercase().as_str(), "B3/S23" | "23/3" | "LIFE")
+/// The rule a header names, as `tiling` runs it. Golly's `23/3` and `Life`
+/// mean B3/S23 on the square grid.
+pub fn rule_of(text: &str, tiling: Tiling) -> Result<Rule, String> {
+    if tiling == Tiling::Square && matches!(text.to_ascii_uppercase().as_str(), "23/3" | "LIFE") {
+        return Ok(Tiling::Square.default_rule());
+    }
+    Rule::parse(text, tiling).map_err(|e| e.to_string())
+}
+
+/// The refusal for RLE text that would describe a pattern of another grid.
+pub fn square_only(tiling: Tiling) -> Result<(), String> {
+    if tiling == Tiling::Square {
+        Ok(())
+    } else {
+        Err(format!("RLE describes square grids, so it cannot be used with the {} grid.", tiling.name()))
+    }
 }
 
 fn parse_side(text: &str, what: &str) -> Result<u32, String> {
@@ -66,6 +82,11 @@ fn parse_bounded(suffix: &str, notices: &mut Vec<String>) -> Option<Bounded> {
 }
 
 pub fn parse(text: &str) -> Result<Rle, String> {
+    parse_as(text, Tiling::Square, false)
+}
+
+/// Reads RLE text as a pattern of `tiling` with `offset`.
+pub fn parse_as(text: &str, tiling: Tiling, offset: bool) -> Result<Rle, String> {
     let mut name: Option<String> = None;
     let mut comments: Vec<String> = Vec::new();
     let mut lines = text.lines();
@@ -106,7 +127,7 @@ pub fn parse(text: &str) -> Result<Rle, String> {
     let width = parse_side(&value(fields.next(), "x")?, "width")?;
     let height = parse_side(&value(fields.next(), "y")?, "height")?;
     let mut notices = Vec::new();
-    let mut rule = "B3/S23".to_string();
+    let mut rule = tiling.default_rule().to_string();
     let mut bounded = None;
     if let Some(rest) = fields.next() {
         let written = value(Some(rest), "rule")?;
@@ -121,13 +142,8 @@ pub fn parse(text: &str) -> Result<Rle, String> {
             bounded = parse_bounded(suffix, &mut notices);
         }
     }
-    if !is_conway(&rule) {
-        notices.push(format!(
-            "The file's rule is {rule}, not B3/S23. Its cells were loaded and will run under B3/S23."
-        ));
-    }
 
-    let mut pattern = Pattern::new(width, height, Tiling::Square, false);
+    let mut pattern = Pattern::new(width, height, tiling, offset);
     let (mut x, mut y) = (0u64, 0u64);
     let mut run: Option<u64> = None;
     'body: for line in lines {
@@ -175,10 +191,11 @@ pub fn parse(text: &str) -> Result<Rle, String> {
     })
 }
 
-/// RLE text for `pattern`, 70 columns at most. The header keeps the full
-/// rectangle; a `bounded` grid adds its `:T`/`:P` suffix.
+/// RLE text for `pattern`, 70 columns at most. The header names `rule` and
+/// keeps the full rectangle; a `bounded` grid adds its `:T`/`:P` suffix.
 pub fn write(
     pattern: &Pattern,
+    rule: Rule,
     name: Option<&str>,
     comment: Option<&str>,
     bounded: Option<Bounded>,
@@ -190,7 +207,7 @@ pub fn write(
     for line in comment.into_iter().flat_map(str::lines) {
         out.push_str(&format!("#C {line}\n"));
     }
-    out.push_str(&format!("x = {}, y = {}, rule = B3/S23", pattern.width(), pattern.height()));
+    out.push_str(&format!("x = {}, y = {}, rule = {rule}", pattern.width(), pattern.height()));
     if let Some(b) = bounded {
         out.push_str(&format!(":{}{},{}", b.kind, b.width, b.height));
     }
@@ -243,6 +260,10 @@ pub fn write(
 mod tests {
     use super::*;
 
+    fn life() -> Rule {
+        Tiling::Square.default_rule()
+    }
+
     fn glider() -> Pattern {
         let mut p = Pattern::new(3, 3, Tiling::Square, false);
         for (x, y) in [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)] {
@@ -258,7 +279,7 @@ mod tests {
         for (x, y) in [(2, 1), (3, 2), (1, 3), (2, 3), (3, 3)] {
             p.set(x, y, true);
         }
-        let text = write(&p, Some("Glider"), Some("first line\nsecond line"), None);
+        let text = write(&p, life(), Some("Glider"), Some("first line\nsecond line"), None);
         let back = parse(&text).unwrap();
         assert_eq!(back.pattern, p);
         assert_eq!(back.name.as_deref(), Some("Glider"));
@@ -270,14 +291,14 @@ mod tests {
     #[test]
     fn written_body_is_exact_and_wrapped() {
         assert_eq!(
-            write(&glider(), None, None, None),
+            write(&glider(), life(), None, None, None),
             "x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!\n"
         );
         let mut wide = Pattern::new(200, 1, Tiling::Square, false);
         for x in (0..200).step_by(2) {
             wide.set(x, 0, true);
         }
-        let text = write(&wide, None, None, None);
+        let text = write(&wide, life(), None, None, None);
         assert!(text.lines().all(|l| l.len() <= 70));
         assert_eq!(parse(&text).unwrap().pattern, wide);
     }
@@ -287,9 +308,9 @@ mod tests {
         let mut p = Pattern::new(4, 5, Tiling::Square, false);
         p.set(0, 0, true);
         p.set(3, 4, true);
-        assert_eq!(parse(&write(&p, None, None, None)).unwrap().pattern, p);
+        assert_eq!(parse(&write(&p, life(), None, None, None)).unwrap().pattern, p);
         let empty = Pattern::new(5, 5, Tiling::Square, false);
-        assert_eq!(parse(&write(&empty, None, None, None)).unwrap().pattern, empty);
+        assert_eq!(parse(&write(&empty, life(), None, None, None)).unwrap().pattern, empty);
     }
 
     #[test]
@@ -326,12 +347,20 @@ mod tests {
     }
 
     #[test]
-    fn other_rule_loads_with_a_notice() {
+    fn other_rule_is_kept_for_the_host_to_compare() {
         let r = parse("x = 3, y = 3, rule = B36/S23\nbob$2bo$3o!\n").unwrap();
         assert_eq!(r.pattern, glider());
         assert_eq!(r.rule, "B36/S23");
-        assert_eq!(r.notices.len(), 1);
-        assert!(r.notices[0].contains("B36/S23"));
+        assert!(r.notices.is_empty());
+        assert_eq!(rule_of(&r.rule, Tiling::Square).unwrap().to_string(), "B36/S23");
+        assert!(rule_of("Generations", Tiling::Square).is_err());
+    }
+
+    #[test]
+    fn a_hexagonal_body_reads_with_its_offset_and_default_rule() {
+        let r = parse_as("x = 3, y = 3\nbob$obo$bo!\n", Tiling::Hexagonal, true).unwrap();
+        assert_eq!((r.pattern.tiling(), r.pattern.offset()), (Tiling::Hexagonal, true));
+        assert_eq!(r.rule, Tiling::Hexagonal.default_rule().to_string());
     }
 
     #[test]
@@ -350,7 +379,7 @@ mod tests {
     #[test]
     fn whole_universe_output_carries_the_suffix() {
         let b = Bounded { kind: 'T', width: 3, height: 3 };
-        let text = write(&glider(), None, None, Some(b));
+        let text = write(&glider(), life(), None, None, Some(b));
         assert!(text.contains("rule = B3/S23:T3,3\n"), "{text}");
         assert_eq!(parse(&text).unwrap().bounded, Some(b));
     }

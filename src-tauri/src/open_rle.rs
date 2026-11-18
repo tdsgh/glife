@@ -2,12 +2,18 @@
 
 use glife_engine::{Edges, PasteMode, Tiling, Universe, MAX_SIDE, MIN_SIDE};
 
-use crate::rle::Rle;
+use crate::rle::{rule_of, Rle};
 
 /// A universe holding the RLE's pattern, plus notices for the operator. The
 /// pattern's own sides are at most 2048, so only a declared grid can be refused.
 pub fn universe_from_rle(rle: &Rle) -> Result<(Universe, Vec<String>), String> {
     let mut notices = rle.notices.clone();
+    if rule_of(&rle.rule, Tiling::Square) != Ok(Tiling::Square.default_rule()) {
+        notices.push(format!(
+            "The file's rule is {}, not B3/S23. Its cells were loaded and will run under B3/S23.",
+            rle.rule
+        ));
+    }
     let p = &rle.pattern;
     let sides = MIN_SIDE..=MAX_SIDE;
 
@@ -74,6 +80,15 @@ mod tests {
         assert_eq!((u.width(), u.height(), u.edges()), (10, 8, Edges::Wrap));
         assert_eq!((u.generation(), u.live_count()), (0, 5));
         assert!(notices.is_empty());
+    }
+
+    #[test]
+    fn another_rule_opens_with_one_notice_naming_both_rules() {
+        let (_, notices) = open("x = 3, y = 1, rule = B36/S23\n3o!\n").unwrap();
+        assert_eq!(notices.len(), 1, "{notices:?}");
+        assert!(notices[0].contains("B36/S23") && notices[0].contains("B3/S23"), "{}", notices[0]);
+        let (_, notices) = open("x = 3, y = 1, rule = B3/S23\n3o!\n").unwrap();
+        assert!(notices.is_empty(), "{notices:?}");
     }
 
     #[test]

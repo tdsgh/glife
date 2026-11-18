@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use glife_engine::{Edges, PasteMode, Pattern, Rect, Tiling, Universe};
+use glife_engine::{Edges, PasteMode, Pattern, Rect, Rule, Tiling, Universe};
 
 use super::Problem;
 use crate::pattern_file::PatternFile;
@@ -48,6 +48,8 @@ pub struct Entry {
     pub category: Category,
     pub description: String,
     pub pattern: Pattern,
+    /// The rule the pattern was made under and is checked against.
+    pub rule: Rule,
     pub live: u32,
     pub period: Option<u32>,
     pub speed: Option<String>,
@@ -108,9 +110,9 @@ fn load_one(path: &Path) -> Result<Entry, String> {
     let file = PatternFile::parse(&text)?;
     let category = file.category.as_deref().ok_or("The file has no category.")?;
     let category = Category::parse(category).ok_or_else(|| format!("Unknown category {category:?}."))?;
-    let pattern = file.rle()?.pattern;
+    let (pattern, rule) = file.cells()?;
     let period = file.period;
-    check(category, &pattern, &file)?;
+    check(category, &pattern, rule, &file)?;
     let speed = (category == Category::Spaceship)
         .then(|| speed(period.unwrap_or(1), file.dx.unwrap_or(0), file.dy.unwrap_or(0)));
     Ok(Entry {
@@ -120,14 +122,21 @@ fn load_one(path: &Path) -> Result<Entry, String> {
         description: file.description.unwrap_or_default(),
         live: pattern.live_count(),
         pattern,
+        rule,
         period,
         speed,
     })
 }
 
-/// Runs the category's check on a dead-edged grid with a margin of
-/// `2 x period` around the pattern. A methuselah is not checked.
-pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Result<(), String> {
+/// Runs the category's check on a dead-edged universe of the pattern's grid,
+/// under `rule`, with a margin of `2 x period` around the pattern. The
+/// pattern is stamped as `placement` says and compared where it lands. A
+/// methuselah is not checked, and guns are checked on the square grid only.
+pub fn check(category: Category, pattern: &Pattern, rule: Rule, file: &PatternFile) -> Result<(), String> {
+    let tiling = pattern.tiling();
+    if category == Category::Gun && tiling != Tiling::Square {
+        return Err("The gun check covers the square grid only.".into());
+    }
     if category == Category::Methuselah {
         return Ok(());
     }
@@ -151,11 +160,15 @@ pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Resul
         _ => 0,
     };
 
+    // The margin is even, so the top-left cell sits on an unshifted row and an
+    // up triangle; a pattern with an offset is realigned, and may need one more column.
     let margin = 2 * period;
     let (w, h) = (pattern.width(), pattern.height());
-    let mut u = Universe::new(w + 2 * margin, h + 2 * margin, Edges::Dead, Tiling::Square)
-        .map_err(|e| e.to_string())?;
+    let mut u = Universe::new(w + 2 * margin + 1, h + 2 * margin, Edges::Dead, tiling).map_err(|e| e.to_string())?;
+    u.set_rule(rule).map_err(|e| e.to_string())?;
+    let (stamp, margin_x, margin_y) = pattern.placement((margin + w / 2) as i64, (margin + h / 2) as i64);
     u.place(pattern, margin as i64, margin as i64, PasteMode::Or).map_err(|e| e.to_string())?;
+    let pattern = &stamp;
 
     // Whether the whole grid holds `pattern` with its top-left cell at `(x, y)` and nothing else.
     let holds_alone = |u: &Universe, x: i64, y: i64| {
@@ -165,14 +178,14 @@ pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Resul
     match category {
         Category::StillLife => {
             u.step();
-            if !holds_alone(&u, margin as i64, margin as i64) {
+            if !holds_alone(&u, margin_x, margin_y) {
                 return Err("The pattern changes in one generation, so it is not a still life.".into());
             }
         }
         Category::Oscillator => {
             for g in 1..=period {
                 u.step();
-                let same = holds_alone(&u, margin as i64, margin as i64);
+                let same = holds_alone(&u, margin_x, margin_y);
                 if g < period && same {
                     return Err(format!("The pattern returns after {g} generations, not {period}."));
                 }
@@ -185,7 +198,7 @@ pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Resul
             for _ in 0..period {
                 u.step();
             }
-            if !holds_alone(&u, margin as i64 + dx as i64, margin as i64 + dy as i64) {
+            if !holds_alone(&u, margin_x + dx as i64, margin_y + dy as i64) {
                 return Err(format!(
                     "After {period} generations the pattern is not the start shape moved by ({dx}, {dy})."
                 ));
@@ -194,11 +207,11 @@ pub fn check(category: Category, pattern: &Pattern, file: &PatternFile) -> Resul
         Category::Gun => {
             for g in 1..=4 * period {
                 u.step();
-                if g == period && !holds(&u, pattern, margin as i64, margin as i64) {
+                if g == period && !holds(&u, pattern, margin_x, margin_y) {
                     return Err(format!("The gun's box is not back at its start after {period} generations."));
                 }
             }
-            if !holds(&u, pattern, margin as i64, margin as i64) {
+            if !holds(&u, pattern, margin_x, margin_y) {
                 return Err(format!("The gun's box is not back at its start after {} generations.", 4 * period));
             }
             let outside = count_gliders(&u, Rect { x: margin, y: margin, w, h });
@@ -268,9 +281,8 @@ mod tests {
     }
 
     fn file(name: &str, category: &str, period: Option<u32>, body: &str) -> String {
-        let mut f = PatternFile::personal(name, None, format!("x = 4, y = 4\n{body}\n"));
-        f.created = None;
-        f.changed = None;
+        let mut f = PatternFile::from_pattern(&Pattern::new(1, 1, Tiling::Square, false), Tiling::Square.default_rule(), name, None);
+        f.rle = format!("x = 4, y = 4\n{body}\n");
         f.category = Some(category.into());
         f.period = period;
         f.render().unwrap()
@@ -291,6 +303,44 @@ mod tests {
         assert_eq!(glider.speed.as_deref(), Some("c/4 diagonal"));
         assert_eq!(glider.period, Some(4));
         assert_eq!(glider.live, 5);
+    }
+
+    #[test]
+    fn every_grid_ships_patterns_under_its_own_rules() {
+        let (entries, problems) = load(&patterns_dir());
+        assert!(problems.is_empty(), "{problems:?}");
+        for tiling in Tiling::ALL {
+            let own: Vec<_> = entries.iter().filter(|e| e.pattern.tiling() == tiling).collect();
+            assert!(own.len() >= 3, "{tiling:?} has {}", own.len());
+            assert!(own.iter().any(|e| e.category == Category::Oscillator), "{tiling:?} has no oscillator");
+            assert!(own.iter().all(|e| tiling.presets().iter().any(|&(_, r)| r == e.rule)), "{tiling:?}");
+        }
+    }
+
+    /// A hexagonal pattern file around `rle`, with the usual `Ring` facts.
+    fn hex_file(category: &str, period: Option<u32>, rule: &str, rle: &str) -> String {
+        let mut f = PatternFile::from_pattern(&Pattern::new(1, 1, Tiling::Hexagonal, false), Tiling::Hexagonal.default_rule(), "Ring", None);
+        f.category = Some(category.into());
+        f.period = period;
+        f.rle = format!("x = 3, y = 3, rule = {rule}\n{rle}\n");
+        f.render().unwrap()
+    }
+
+    #[test]
+    fn a_hexagonal_oscillator_with_the_wrong_period_is_a_problem() {
+        let dir = tempfile::tempdir().unwrap();
+        let ring = "b2o$obo$b2o!";
+        std::fs::write(dir.path().join("right.toml"), hex_file("oscillator", Some(3), "B2/S35", ring)).unwrap();
+        std::fs::write(dir.path().join("wrong.toml"), hex_file("oscillator", Some(2), "B2/S35", ring)).unwrap();
+        // The same cells under another rule do not oscillate with that period.
+        std::fs::write(dir.path().join("other-rule.toml"), hex_file("oscillator", Some(3), "B3/S23", ring)).unwrap();
+        std::fs::write(dir.path().join("too-many.toml"), hex_file("oscillator", Some(3), "B2/S37", ring)).unwrap();
+        let (entries, problems) = load(dir.path());
+        assert_eq!(entries.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["right"]);
+        let mut bad: Vec<_> = problems.iter().map(|p| p.file.as_str()).collect();
+        bad.sort();
+        assert_eq!(bad, ["other-rule.toml", "too-many.toml", "wrong.toml"]);
+        assert_eq!(entries[0].rule.to_string(), "B2/S35");
     }
 
     #[test]
