@@ -40,6 +40,8 @@ const edit = () => getState().edit;
 
 export const setTool = (tool: tools.Tool) => dispatch(tools.setTool(edit(), tool));
 export const setPasteMode = (mode: backend.PasteMode) => dispatch(tools.setMode(edit(), mode));
+/** Escape while placing: ends placing and brings back the earlier tool. */
+export const endPlacing = () => dispatch(tools.escape(edit()));
 export const resetEdit = () => dispatch(tools.reset(edit()));
 export const flipH = () => dispatch(tools.flip(edit(), "h"));
 export const flipV = () => dispatch(tools.flip(edit(), "v"));

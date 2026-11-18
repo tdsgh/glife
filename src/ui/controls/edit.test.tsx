@@ -85,11 +85,14 @@ test("undo and redo buttons follow the header flags and are disabled while playi
   expect([undoBtn.disabled, redoBtn.disabled]).toEqual([true, true]);
 });
 
-test("the Or/Copy switch shows while placing and keeps its choice", () => {
+test("the Or/Copy switch is always shown, enabled while placing, and keeps its choice", () => {
   render(<Toolbar />);
-  expect(screen.queryByRole("button", { name: "Or" })).toBeNull();
+  const copyMode = () => screen.getByRole("button", { name: "Paste mode Copy" }) as HTMLButtonElement;
+  expect(copyMode().disabled).toBe(true);
   withPlacing();
-  fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+  expect(copyMode().disabled).toBe(false);
+  fireEvent.click(copyMode());
+  expect(copyMode().getAttribute("aria-pressed")).toBe("true");
   expect(getState().edit.mode).toBe("copy");
   act(() => setEdit(tools.escape(getState().edit).state));
   withPlacing();
@@ -128,4 +131,44 @@ test("copy and cut send the selection rect", async () => {
   cut();
   await waitFor(() => expect(sent()).toEqual(["copy_selection", "cut_selection"]));
   expect(calls[0].args).toEqual({ x: 2, y: 3, w: 4, h: 5 });
+});
+
+test("clipboard buttons follow the Edit menu's enabling and send their commands", async () => {
+  render(<Toolbar />);
+  const btn = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+  expect(["Cut", "Copy", "Delete", "Flip H", "Flip V"].map((n) => btn(n).disabled)).toEqual([true, true, true, true, true]);
+  expect(btn("Paste").disabled).toBe(false);
+  withSelection();
+  expect(["Cut", "Copy", "Delete", "Flip H", "Flip V"].map((n) => btn(n).disabled)).toEqual([false, false, false, false, false]);
+  fireEvent.click(btn("Cut"));
+  fireEvent.click(btn("Copy"));
+  fireEvent.click(btn("Delete"));
+  await waitFor(() => expect(sent()).toEqual(["cut_selection", "copy_selection", "delete_selection"]));
+});
+
+test("toolbar toggle buttons expose and show their state", () => {
+  render(<Toolbar />);
+  const pressed = (name: string) => screen.getByRole("button", { name }).getAttribute("aria-pressed");
+  expect(pressed("Draw")).toBe("true");
+  expect(pressed("Select")).toBe("false");
+  expect(pressed("Library")).toBe("false");
+  expect(pressed("Play")).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: "Select" }));
+  expect(pressed("Select")).toBe("true");
+  expect(screen.getByRole("button", { name: "Select" }).style.background).not.toBe("");
+  expect(screen.getByRole("button", { name: "Draw" }).style.background).not.toBe(screen.getByRole("button", { name: "Select" }).style.background);
+  expect(screen.getByRole("button", { name: "Draw" }).style.borderRadius).toBe(screen.getByRole("button", { name: "Select" }).style.borderRadius);
+  act(() => setHeader(header({ playing: true })));
+  expect(pressed("Pause")).toBe("true");
+});
+
+test("the Paste button is active while placing and clicking it ends placing", () => {
+  render(<Toolbar />);
+  const paste = () => screen.getByRole("button", { name: "Paste" });
+  expect(paste().getAttribute("aria-pressed")).toBe("false");
+  act(() => setEdit(tools.startPlacing(getState().edit, { width: 3, height: 3, bits: new Uint32Array(3) }).state));
+  expect(paste().getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(paste());
+  expect(getState().edit.placing).toBeNull();
+  expect(paste().getAttribute("aria-pressed")).toBe("false");
 });

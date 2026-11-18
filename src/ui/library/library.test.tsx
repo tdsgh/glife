@@ -96,21 +96,16 @@ test("the selected entry shows its description, and personal entries their dates
   expect(screen.getByText(/Saved .* changed /)).toBeTruthy();
 });
 
-test("an oversized entry's Place button is disabled and says why", async () => {
-  await open();
-  fireEvent.click(screen.getByText("Huge gun"));
-  expect((screen.getByRole("button", { name: "Place" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/Larger than the universe \(100 × 50\)/)).toBeTruthy();
-  fireEvent.click(screen.getByText("Glider"));
-  expect((screen.getByRole("button", { name: "Place" }) as HTMLButtonElement).disabled).toBe(false);
-});
-
-test("Place begins placing the entry and fetches its cells", async () => {
+test("an oversized row is not clickable and says why; a fitting row places", async () => {
   handlers.begin_place = () => ({ width: 3, height: 3, name: "Glider", comment: "", notices: [] });
   handlers.pending_cells = () => new Uint32Array([3, 3, 2, 4, 7]).buffer;
   await open();
+  expect(screen.getByText(/Larger than the universe \(100 × 50\)/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Place" })).toBeNull();
+  fireEvent.click(screen.getByText("Huge gun"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(sent()).not.toContain("begin_place");
   fireEvent.click(screen.getByText("Glider"));
-  click("Place");
   await waitFor(() => expect(getState().edit.placing).not.toBeNull());
   expect(JSON.stringify(calls.find((c) => c.cmd === "begin_place")!.args)).toContain('"builtin":"glider"');
   expect(getState().edit.placing!.width).toBe(3);
@@ -122,7 +117,6 @@ test("a begin_place error shows a notice and does not start placing", async () =
   };
   await open();
   fireEvent.click(screen.getByText("Glider"));
-  click("Place");
   await waitFor(() => expect(getState().notice).toBe("too big"));
   expect(getState().edit.placing).toBeNull();
 });
@@ -140,31 +134,59 @@ test("personal actions send their commands", async () => {
   await waitFor(() => expect(sent().filter((c) => c === "library_list").length).toBe(2));
 });
 
-test("Copy to personal sends the built-in id and the chosen name", async () => {
+test("Copy to personal edits the name in the row and sends the built-in id", async () => {
   await open();
-  fireEvent.click(screen.getByText("Block"));
-  click("Copy to personal");
-  const dialog = screen.getByRole("dialog");
-  fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "My block" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  fireEvent.click(within(screen.getByText("Block").closest("li")!).getByRole("button", { name: "Copy to personal" }));
+  const field = screen.getByLabelText("Name");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.change(field, { target: { value: "My block" } });
+  fireEvent.keyDown(field, { key: "Enter" });
   await waitFor(() => expect(sent()).toContain("library_copy_builtin"));
   expect(calls.find((c) => c.cmd === "library_copy_builtin")!.args).toEqual({ id: "block", name: "My block", replace: false });
 });
 
-test("Rename and Edit comment send their commands", async () => {
+test("in-place rename: Enter saves, Escape cancels", async () => {
+  await open();
+  fireEvent.click(screen.getByText("Other"));
+  click("Rename");
+  let field = screen.getByLabelText("Name");
+  fireEvent.change(field, { target: { value: "Nope" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(screen.queryByLabelText("Name")).toBeNull();
+  expect(sent()).not.toContain("library_rename");
+  click("Rename");
+  field = screen.getByLabelText("Name");
+  fireEvent.change(field, { target: { value: "Renamed" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await waitFor(() => expect(sent()).toContain("library_rename"));
+  expect(calls.find((c) => c.cmd === "library_rename")!.args).toEqual({ name: "Other", newName: "Renamed", replace: false });
+});
+
+test("in-place comment edit saves when the field loses focus", async () => {
   await open();
   fireEvent.click(screen.getByText("Other"));
   click("Edit comment");
-  fireEvent.change(screen.getByLabelText("Comment"), { target: { value: "hello" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  const field = screen.getByLabelText("Comment");
+  fireEvent.change(field, { target: { value: "hello" } });
+  fireEvent.blur(field);
   await waitFor(() => expect(sent()).toContain("library_set_comment"));
   expect(calls.find((c) => c.cmd === "library_set_comment")!.args).toEqual({ name: "Other", comment: "hello" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("a taken name in place offers Replace, which resends with replace: true", async () => {
+  let n = 0;
+  handlers.library_rename = () => (n++ === 0 ? { nameTaken: true } : null);
+  await open();
+  fireEvent.click(screen.getByText("Other"));
   click("Rename");
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Renamed" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(sent()).toContain("library_rename"));
-  expect(calls.find((c) => c.cmd === "library_rename")!.args).toEqual({ name: "Other", newName: "Renamed", replace: false });
+  const field = screen.getByLabelText("Name");
+  fireEvent.change(field, { target: { value: "My glider" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+  await screen.findByText(/already exists/);
+  expect(screen.getByRole("button", { name: "Choose another name" })).toBeTruthy();
+  click("Replace");
+  await waitFor(() => expect(screen.queryByLabelText("Name")).toBeNull());
+  expect(calls.filter((c) => c.cmd === "library_rename").map((c) => c.args.replace)).toEqual([false, true]);
 });
 
 test("a taken name offers Replace, and Replace resends with replace: true", async () => {

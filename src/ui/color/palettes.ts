@@ -3,7 +3,7 @@ export type PaletteSize = 16 | 32 | 256;
 
 export const PALETTE_SIZES: PaletteSize[] = [16, 32, 256];
 
-/** Stops are sRGB hex; each palette runs from the youngest to the oldest cell. */
+/** Stops are sRGB hex; each palette runs from the youngest to the oldest cell. Entry 0 (age 0) is always white and the stops fill entries 1 to N - 1. */
 export const PALETTES: Record<PaletteId, { label: string; stops: string[] }> = {
   // Safe for common color-vision deficiencies; the darkest end of viridis is trimmed.
   viridis: { label: "Viridis", stops: ["#472d7b", "#3b528b", "#21918c", "#5ec962", "#fde725"] },
@@ -40,12 +40,13 @@ function labToBytes([L, a, b]: Lab): [number, number, number] {
   return lin.map((c) => Math.round(255 * Math.min(1, Math.max(0, toSrgb(c))))) as [number, number, number];
 }
 
-/** RGBA bytes, `size` entries, the stops interpolated in OKLab. */
+/** RGBA bytes, `size` entries: entry 0 white, the stops interpolated in OKLab over the rest. */
 export function paletteColors(id: PaletteId, size: PaletteSize): Uint8Array {
   const stops = PALETTES[id].stops.map(hexToLab);
   const out = new Uint8Array(size * 4);
-  for (let i = 0; i < size; i++) {
-    const t = (i / (size - 1)) * (stops.length - 1);
+  out.set([255, 255, 255, 255], 0);
+  for (let i = 1; i < size; i++) {
+    const t = ((i - 1) / (size - 2)) * (stops.length - 1);
     const k = Math.min(Math.floor(t), stops.length - 2);
     const f = t - k;
     const lab = stops[k].map((v, j) => v + (stops[k + 1][j] - v) * f) as Lab;

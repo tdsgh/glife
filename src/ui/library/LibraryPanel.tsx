@@ -4,7 +4,7 @@ import type { BuiltinEntry, LibraryList, PersonalEntry, Source } from "../backen
 import { placeSource } from "../controls/actions";
 import { bumpLibrary, setNotice, useUiState } from "../state";
 import { PatternPreview } from "./PatternPreview";
-import { SavePatternDialog } from "./SavePatternDialog";
+import { InlineEdit } from "./InlineEdit";
 
 const CATEGORY_NAMES: Record<BuiltinEntry["category"], string> = {
   "still-life": "Still lifes",
@@ -29,7 +29,7 @@ export function LibraryPanel() {
   const [list, setList] = useState<LibraryList>(EMPTY);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Selected>(null);
-  const [dialog, setDialog] = useState<Pending | null>(null);
+  const [editing, setEditing] = useState<Pending | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -54,16 +54,15 @@ export function LibraryPanel() {
     );
   };
 
-  const placeButton = (e: BuiltinEntry | PersonalEntry, source: Source) => (
-    <>
-      <button onClick={() => void placeSource(source)} disabled={tooBig(e)}>Place</button>
-      {tooBig(e) && (
-        <span style={{ marginLeft: 6, color: "#ffe9a8" }}>
-          Larger than the universe ({gridW} × {gridH})
-        </span>
-      )}
-    </>
-  );
+  const tooBigNote = (e: BuiltinEntry | PersonalEntry) =>
+    tooBig(e) && (
+      <div style={{ color: "#ffe9a8", fontSize: 12 }}>
+        Larger than the universe ({gridW} × {gridH})
+      </div>
+    );
+
+  const editingHere = (kind: Pending["kind"], e: BuiltinEntry | PersonalEntry) =>
+    editing?.kind === kind && editing.entry === e ? editing : null;
 
   const builtin = list.builtin.filter((e) => matches(e.name, filter));
   const personal = list.personal.filter((e) => matches(e.name, filter));
@@ -71,13 +70,27 @@ export function LibraryPanel() {
 
   const row = (kind: "builtin" | "personal", key: string, source: Source, e: BuiltinEntry | PersonalEntry, details: React.ReactNode) => {
     const open = selected?.kind === kind && selected.key === key;
+    const blocked = tooBig(e);
+    const nameEdit = editingHere(kind === "builtin" ? "copy" : "rename", e);
     return (
       <li key={key} style={{ padding: 4, borderBottom: "1px solid #2c323c", background: open ? "#262c36" : undefined }}>
-        <div style={{ display: "flex", gap: 8, cursor: "pointer" }} onClick={() => setSelected(open ? null : { kind, key })}>
+        <div style={{ display: "flex", gap: 8, cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.6 : 1 }}
+          aria-disabled={blocked}
+          onClick={() => {
+            setSelected({ kind, key });
+            if (!blocked) void placeSource(source);
+          }}>
           <PatternPreview source={source} />
-          <div>
-            <strong>{e.name}</strong>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "flex-start", justifyContent: "space-between" }}>
+              {nameEdit ? <InlineEdit kind="name" initial={nameEdit.entry.name} submit={submitFor(nameEdit)} onClose={() => setEditing(null)} /> : <strong>{e.name}</strong>}
+              {kind === "builtin" && (
+                <button aria-label="Copy to personal" title="Copy to personal"
+                  onClick={(ev) => { ev.stopPropagation(); setEditing({ kind: "copy", entry: e as BuiltinEntry }); }}>⧉</button>
+              )}
+            </div>
             {stats(e)}
+            {tooBigNote(e)}
           </div>
         </div>
         {open && <div style={{ marginTop: 4 }}>{details}</div>}
@@ -85,14 +98,14 @@ export function LibraryPanel() {
     );
   };
 
-  const submitFor = (d: Pending) => async (name: string, comment: string, replace: boolean) => {
+  const submitFor = (d: Pending) => async (value: string, replace: boolean) => {
     const reply =
-      d.kind === "copy" ? await backend.libraryCopyBuiltin(d.entry.id, name, replace)
-      : d.kind === "rename" ? await backend.libraryRename(d.entry.name, name, replace)
-      : await backend.librarySetComment(d.entry.name, comment).then(() => null);
+      d.kind === "copy" ? await backend.libraryCopyBuiltin(d.entry.id, value, replace)
+      : d.kind === "rename" ? await backend.libraryRename(d.entry.name, value, replace)
+      : await backend.librarySetComment(d.entry.name, value).then(() => null);
     if (!reply || !reply.nameTaken) {
       bumpLibrary();
-      if (d.kind === "rename") setSelected({ kind: "personal", key: name });
+      if (d.kind === "rename") setSelected({ kind: "personal", key: value });
     }
     return reply;
   };
@@ -103,6 +116,17 @@ export function LibraryPanel() {
       <input type="search" aria-label="Filter patterns" placeholder="Filter by name" value={filter}
         onChange={(e) => setFilter(e.target.value)} style={{ margin: 8, width: "calc(100% - 16px)" }} />
 
+      {list.problems.length > 0 && (
+        <section aria-label="Problem files" style={{ margin: 8, color: "#ffe9a8" }}>
+          <h4 style={{ margin: "4px 0" }}>Files that could not be used</h4>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {list.problems.map((p) => (
+              <li key={p.file}>{p.file}: {p.reason}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <h3 style={{ margin: "8px" }}>Built-in</h3>
       {categories.map((c) => (
         <section key={c} aria-label={CATEGORY_NAMES[c]}>
@@ -112,8 +136,6 @@ export function LibraryPanel() {
               row("builtin", e.id, { builtin: e.id }, e, (
                 <>
                   <p style={{ margin: "4px 0" }}>{e.description}</p>
-                  {placeButton(e, { builtin: e.id })}{" "}
-                  <button onClick={() => setDialog({ kind: "copy", entry: e })}>Copy to personal</button>
                 </>
               )))}
           </ul>
@@ -133,37 +155,18 @@ export function LibraryPanel() {
         {personal.map((e) =>
           row("personal", e.name, { personal: e.name }, e, (
             <>
-              {e.comment && <p style={{ margin: "4px 0", whiteSpace: "pre-wrap" }}>{e.comment}</p>}
+              {editingHere("comment", e)
+                ? <InlineEdit kind="comment" initial={e.comment} submit={submitFor(editing!)} onClose={() => setEditing(null)} />
+                : e.comment && <p style={{ margin: "4px 0", whiteSpace: "pre-wrap" }}>{e.comment}</p>}
               <div style={{ fontSize: 12, opacity: 0.8 }}>Saved {date(e.created)} · changed {date(e.changed)}</div>
-              {placeButton(e, { personal: e.name })}{" "}
-              <button onClick={() => setDialog({ kind: "rename", entry: e })}>Rename</button>{" "}
-              <button onClick={() => setDialog({ kind: "comment", entry: e })}>Edit comment</button>{" "}
+              <button onClick={() => setEditing({ kind: "rename", entry: e })}>Rename</button>{" "}
+              <button onClick={() => setEditing({ kind: "comment", entry: e })}>Edit comment</button>{" "}
               <button onClick={() => void backend.libraryDelete(e.name).then((gone) => gone && bumpLibrary()).catch(fail)}>Delete</button>{" "}
               <button onClick={() => void backend.exportRle({ personal: e.name }).catch(fail)}>Export</button>
             </>
           )))}
       </ul>
 
-      {list.problems.length > 0 && (
-        <section aria-label="Problem files" style={{ margin: 8, color: "#ffe9a8" }}>
-          <h4 style={{ margin: "4px 0" }}>Files that could not be used</h4>
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
-            {list.problems.map((p) => (
-              <li key={p.file}>{p.file}: {p.reason}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {dialog && (
-        <SavePatternDialog
-          title={dialog.kind === "copy" ? "Copy to personal" : dialog.kind === "rename" ? "Rename pattern" : "Edit comment"}
-          fields={{ name: dialog.kind !== "comment", comment: dialog.kind === "comment" }}
-          initialName={dialog.entry.name}
-          initialComment={dialog.kind === "comment" ? dialog.entry.comment : ""}
-          submit={submitFor(dialog)}
-          onClose={() => setDialog(null)} />
-      )}
     </aside>
   );
 }
