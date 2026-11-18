@@ -14,14 +14,38 @@ export interface Region {
 /** A `since` value that never equals a snapshot version: forces a full reply. */
 export const NO_VERSION = Number.MAX_SAFE_INTEGER;
 
-export const newUniverse = (width: number, height: number, edges: Edges) =>
-  invoke<void>("new_universe", { width, height, edges });
+export type TilingId = "square" | "hexagonal" | "triangular-12" | "triangular-3";
+
+export interface RuleInfo {
+  text: string;
+  birth: number;
+  survival: number;
+}
+
+export interface TilingInfo {
+  id: TilingId;
+  name: string;
+  neighbors: number;
+  defaultRule: RuleInfo;
+  presets: { name: string; rule: string }[];
+  wrapEvenWidth: boolean;
+  wrapEvenHeight: boolean;
+}
+
+/** Every grid with its default rule and presets. */
+export const tilings = () => invoke<TilingInfo[]>("tilings");
+/** `tiling` defaults to square and `rule` to the grid's default; rejects with a message when the size does not allow wrapping or the grid cannot run the rule. */
+export const newUniverse = (width: number, height: number, edges: Edges, tiling?: TilingId, rule?: string) =>
+  invoke<void>("new_universe", { width, height, edges, tiling, rule });
 export const play = () => invoke<void>("play");
 export const pause = () => invoke<void>("pause");
 export const step = () => invoke<void>("step");
 /** `gensPerSec` null means as fast as possible. */
 export const setSpeed = (gensPerSec: number | null) => invoke<void>("set_speed", { gensPerSec });
+/** Rejects with a message when the grid cannot wrap at the universe's size. */
 export const setEdges = (edges: Edges) => invoke<void>("set_edges", { edges });
+/** `rule` is `B…/S…` text; rejects with a message when the grid cannot run it. */
+export const setRule = (rule: string) => invoke<void>("set_rule", { rule });
 /** Batches with the same `stroke` id and no other command between them undo as one step; without one, each batch is its own step. */
 export const edit = (cells: [x: number, y: number][], alive: boolean, stroke?: number) =>
   invoke<void>("edit", { cells, alive, stroke });
@@ -47,8 +71,13 @@ export const flipSelection = (rect: Rect, axis: FlipAxis) => invoke<void>("flip_
 /** Stamps the pending pattern, flipped as given, with its center cell `(⌊w/2⌋, ⌊h/2⌋)` at `(x, y)`. */
 export const place = (x: number, y: number, flipH: boolean, flipV: boolean, mode: PasteMode) =>
   invoke<void>("place", { x, y, flipH, flipV, mode });
-/** The pending pattern as a raw pattern buffer. */
-export const pendingCells = () => invoke<ArrayBuffer>("pending_cells");
+/**
+ * The pending pattern, flipped and lined up for an anchor at `(x, y)`, as a raw
+ * placement buffer: u32 words `[width, height, left, top]` (`left` and `top` are
+ * i32 offsets of the top-left cell from the anchor), then the pattern's rows.
+ */
+export const pendingCells = (flipH = false, flipV = false, x = 0, y = 0) =>
+  invoke<ArrayBuffer>("pending_cells", { flipH, flipV, x, y });
 
 /** Reads the clipboard's RLE into the pending slot; rejects with a message when there is none. */
 export const paste = () => invoke<PendingInfo>("paste");

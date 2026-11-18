@@ -602,7 +602,8 @@ Proposes; the session applies after approval.
   exchange format off the square grid.
 - `docs/roadmap.md`: Phase 3 to Done; Risks and known costs as measured.
 - Root `CLAUDE.md` § Cross-cutting rules: add `fixtures/universe-hex-v1.glife`
-  to the files kept loading.
+  to the files kept loading. Command index: the benchmark row gains
+  `GLIFE_BENCH=<tiling id>[:<rule>]` and its `main.rs` link is corrected.
 - `.claude/agents/engine.md`: the rule "Keep both layers out of the B3/S23
   step" names every grid's step.
 - Move `glife-phase-3.md` and this plan to `docs/hist/` once Phase 3 is Done,

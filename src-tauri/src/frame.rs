@@ -1,5 +1,10 @@
 //! Encodes a snapshot region into frame layout v1: little-endian 32-bit
 //! words, a 16-word header, then layers (kind, word count, data).
+//!
+//! Flags (word 1): bit 0 playing, 1 can undo, 2 can redo, 3 unsaved changes,
+//! bits 8-11 the tiling code. Word 10: bit 0 edge mode (0 wrap, 1 dead), bits
+//! 1-13 the birth mask and bits 14-26 the survival mask, each XORed with the
+//! tiling's default rule.
 
 use crate::sim::Snapshot;
 use glife_engine::Edges;
@@ -40,6 +45,7 @@ pub fn encode(
     let mut words: Vec<u32> = Vec::with_capacity(
         16 + (rw / 32 * rh) as usize + 2 + layers.count_ones() as usize * (bytes_per_layer + 2),
     );
+    let default = u.tiling().default_rule();
     let version = snapshot.version;
     let generation = u.generation();
     words.extend([
@@ -47,7 +53,8 @@ pub fn encode(
         snapshot.playing as u32
             | (snapshot.can_undo as u32) << 1
             | (snapshot.can_redo as u32) << 2
-            | (snapshot.dirty as u32) << 3,
+            | (snapshot.dirty as u32) << 3
+            | (u.tiling() as u32) << 8,
         version as u32,
         (version >> 32) as u32,
         generation as u32,
@@ -59,7 +66,8 @@ pub fn encode(
         match u.edges() {
             Edges::Wrap => 0,
             Edges::Dead => 1,
-        },
+        } | ((u.rule().birth ^ default.birth) as u32) << 1
+            | ((u.rule().survival ^ default.survival) as u32) << 14,
         rx,
         ry,
         rw,
@@ -85,7 +93,7 @@ pub fn encode(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glife_engine::{Tiling, Universe};
+    use glife_engine::{Rule, Tiling, Universe};
     use std::path::PathBuf;
 
     fn snapshot() -> Snapshot {
@@ -165,6 +173,48 @@ mod tests {
         assert_eq!(flags(false, false, true, false), 4);
         assert_eq!(flags(false, false, false, true), 8);
         assert_eq!(flags(true, true, true, true), 15);
+    }
+
+    fn header_words(universe: Universe) -> Vec<u32> {
+        let snapshot = Snapshot { universe, ..snapshot() };
+        let bytes = encode(&snapshot, 0.0, 0.0, 64.0, 2.0, 0, 0);
+        bytes.chunks(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect()
+    }
+
+    #[test]
+    fn tiling_code_rides_in_flag_bits_8_to_11() {
+        for tiling in Tiling::ALL {
+            let words = header_words(Universe::new(64, 4, Edges::Dead, tiling).unwrap());
+            assert_eq!(words[1] >> 8 & 0xf, tiling as u32);
+            assert_eq!(words[1] & 0xff, 1, "playing only");
+            assert_eq!(words[1] >> 12, 0);
+        }
+        let hex = header_words(Universe::new(64, 4, Edges::Dead, Tiling::Hexagonal).unwrap());
+        assert_eq!(hex[1] >> 8 & 0xf, 1);
+    }
+
+    #[test]
+    fn rule_rides_in_word_10_as_a_difference_from_the_default() {
+        // A universe under its grid's default rule sends only the edge bit.
+        for tiling in Tiling::ALL {
+            let wrap = header_words(Universe::new(64, 4, Edges::Wrap, tiling).unwrap());
+            let dead = header_words(Universe::new(64, 4, Edges::Dead, tiling).unwrap());
+            assert_eq!((wrap[10], dead[10]), (0, 1), "{tiling:?}");
+        }
+        // Square B36/S23 differs from B3/S23 by bit 6 of the birth mask.
+        let mut u = Universe::new(64, 4, Edges::Dead, Tiling::Square).unwrap();
+        u.set_rule(Rule::parse("B36/S23", Tiling::Square).unwrap()).unwrap();
+        assert_eq!(header_words(u)[10], 1 | 1 << (1 + 6));
+        // Hexagonal B3/S23 against B2/S35: birth 2 and 3 differ, survival 2 and 5.
+        let mut u = Universe::new(64, 4, Edges::Wrap, Tiling::Hexagonal).unwrap();
+        u.set_rule(Rule::parse("B3/S23", Tiling::Hexagonal).unwrap()).unwrap();
+        assert_eq!(header_words(u)[10], (0b1100 << 1) | (0b100100 << 14));
+        // The survival mask reaches bit 26 on the 12-neighbor grid.
+        let mut u = Universe::new(64, 4, Edges::Wrap, Tiling::Triangular12).unwrap();
+        u.set_rule(Rule::parse("B456/S12,", Tiling::Triangular12).unwrap()).unwrap();
+        let default = Tiling::Triangular12.default_rule();
+        let want = ((0b1110000 ^ default.birth as u32) << 1) | ((1 << 12 ^ default.survival as u32) << 14);
+        assert_eq!(header_words(u)[10], want);
     }
 
     /// A 64 x 3 universe with a block aged 305 and another that loses two

@@ -6,7 +6,7 @@ use std::path::Path;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use glife_engine::{Edges, Pattern, Tiling, Universe, MAX_SIDE, MIN_SIDE};
+use glife_engine::{Edges, Pattern, Rule, Tiling, Universe, MAX_SIDE, MIN_SIDE};
 use serde::{Deserialize, Serialize};
 
 const MAGIC: &[u8; 8] = b"GLIFE\0\r\n";
@@ -88,7 +88,7 @@ pub fn write(path: &Path, universe: &Universe) -> Result<(), String> {
     let (alive, ages) = (deflate(&alive), deflate(&ages));
     let header = Header {
         format: FORMAT,
-        tiling: "square".into(),
+        tiling: universe.tiling().id().into(),
         width: w,
         height: h,
         edges: match universe.edges() {
@@ -96,7 +96,7 @@ pub fn write(path: &Path, universe: &Universe) -> Result<(), String> {
             Edges::Dead => "dead",
         }
         .into(),
-        rule: "B3/S23".into(),
+        rule: universe.rule().to_string(),
         generation: universe.generation(),
         sections: vec![
             Section { kind: "alive".into(), codec: "deflate".into(), bytes: alive.len() as u64 },
@@ -137,12 +137,14 @@ fn parse(data: &[u8]) -> Result<Universe, String> {
     }
     let header: Header =
         serde_json::from_value(raw).map_err(|e| format!("The file's header is damaged: {e}."))?;
-    if header.tiling != "square" {
-        return Err(format!("The file's tiling {:?} is not supported.", header.tiling));
-    }
-    if header.rule != "B3/S23" {
-        return Err(format!("The file's rule {} is not supported.", header.rule));
-    }
+    let tiling = Tiling::parse(&header.tiling).ok_or_else(|| {
+        format!(
+            "This file needs a newer version of glife: it uses the grid {:?}, which this version does not know.",
+            header.tiling
+        )
+    })?;
+    let rule = Rule::parse(&header.rule, tiling)
+        .map_err(|e| format!("The file's rule {} cannot run on the {} grid: {e}.", header.rule, tiling.id()))?;
     let edges = match header.edges.as_str() {
         "wrap" => Edges::Wrap,
         "dead" => Edges::Dead,
@@ -182,7 +184,7 @@ fn parse(data: &[u8]) -> Result<Universe, String> {
     let alive = inflate(alive.ok_or("The file has no cells.")?, words_per_row * h as usize * 8, "cells")?;
     let words: Vec<u64> =
         alive.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
-    let mut cells = Pattern::new(w, h, Tiling::Square, false);
+    let mut cells = Pattern::new(w, h, tiling, false);
     let mut live = 0usize;
     for y in 0..h {
         for x in 0..w {
@@ -204,8 +206,7 @@ fn parse(data: &[u8]) -> Result<Universe, String> {
             }
         }
     }
-    let tiling = Tiling::Square;
-    Universe::from_parts(w, h, edges, tiling, tiling.default_rule(), header.generation, &cells, &all_ages)
+    Universe::from_parts(w, h, edges, tiling, rule, header.generation, &cells, &all_ages)
         .map_err(|e| e.to_string())
 }
 
@@ -327,6 +328,106 @@ mod tests {
             });
             assert!(parse(&assemble(&header, &[])).is_err(), "{w}x{h}");
         }
+    }
+
+    /// The fixture's live cells and their ages, as written when it was committed.
+    const FIXTURE_HEX_CELLS: [(u32, u32, u16); 20] = [
+        (4, 0, 1), (0, 1, 1), (1, 2, 1), (3, 2, 2), (8, 2, 3), (9, 2, 1), (1, 3, 0), (2, 3, 3), (7, 3, 3), (9, 3, 1),
+        (7, 4, 0), (8, 4, 1), (9, 4, 0), (6, 5, 3), (7, 5, 0), (3, 6, 0), (7, 6, 4), (1, 7, 3), (2, 7, 1), (3, 7, 1),
+    ];
+
+    fn grid_sample(tiling: Tiling, rule: &str) -> Universe {
+        let mut u = Universe::new(40, 24, Edges::Wrap, tiling).unwrap();
+        u.set_rule(Rule::parse(rule, tiling).unwrap()).unwrap();
+        u.random_fill(0.3, 11);
+        for _ in 0..15 {
+            u.step();
+        }
+        u
+    }
+
+    #[test]
+    fn every_grid_round_trips_cells_ages_tiling_and_rule() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("u.glife");
+        for (tiling, rule) in [
+            (Tiling::Square, "B3/S23"),
+            (Tiling::Square, "B36/S23"),
+            (Tiling::Hexagonal, "B2/S35"),
+            (Tiling::Hexagonal, "B3/S23"),
+            (Tiling::Triangular12, "B456/S45"),
+            (Tiling::Triangular12, "B4,10,11/S5,12"),
+            (Tiling::Triangular3, "B2/S013"),
+        ] {
+            let original = grid_sample(tiling, rule);
+            write(&path, &original).unwrap();
+            let loaded = read(&path).unwrap();
+            assert_same(&original, &loaded);
+            assert_eq!((loaded.tiling(), loaded.rule()), (tiling, original.rule()), "{tiling:?} {rule}");
+            assert_eq!(loaded.rule(), Rule::parse(rule, tiling).unwrap());
+        }
+    }
+
+    #[test]
+    fn the_hexagonal_fixture_loads_under_its_rule() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/universe-hex-v1.glife");
+        let u = read(&path).unwrap();
+        assert_eq!((u.tiling(), u.width(), u.height(), u.edges()), (Tiling::Hexagonal, 10, 8, Edges::Wrap));
+        // B3/S23 rather than the grid's default, B2/S35.
+        assert_eq!(u.rule(), Rule::parse("B3/S23", Tiling::Hexagonal).unwrap());
+        assert_ne!(u.rule(), Tiling::Hexagonal.default_rule());
+        assert_eq!(u.generation(), 4);
+        let live: Vec<(u32, u32, u16)> = (0..8)
+            .flat_map(|y| (0..10).map(move |x| (x, y)))
+            .filter(|&(x, y)| u.get(x, y))
+            .map(|(x, y)| (x, y, u.age(x, y)))
+            .collect();
+        assert_eq!(live, FIXTURE_HEX_CELLS);
+    }
+
+    #[test]
+    fn a_phase_2_file_opens_as_a_square_universe_under_b3_s23() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/universe-v1.glife");
+        let u = read(&path).unwrap();
+        assert_eq!((u.tiling(), u.rule()), (Tiling::Square, Tiling::Square.default_rule()));
+    }
+
+    #[test]
+    fn an_unknown_tiling_is_refused_with_the_newer_glife_message() {
+        let header = serde_json::json!({
+            "format": 1, "tiling": "pentagonal", "width": 5, "height": 4, "edges": "dead",
+            "rule": "B3/S23", "generation": 0, "sections": [],
+        });
+        let e = parse(&assemble(&header, &[])).err().unwrap();
+        assert!(e.contains("newer version of glife") && e.contains("pentagonal"), "{e}");
+    }
+
+    #[test]
+    fn a_rule_the_grid_cannot_run_is_refused_naming_it() {
+        for (tiling, rule) in [("hexagonal", "B3/S27"), ("square", "B0/S23"), ("triangular-3", "B2/S4"), ("square", "Life")] {
+            let header = serde_json::json!({
+                "format": 1, "tiling": tiling, "width": 6, "height": 4, "edges": "dead",
+                "rule": rule, "generation": 0, "sections": [],
+            });
+            let e = parse(&assemble(&header, &[])).err().unwrap();
+            assert!(e.contains(rule) && e.contains(tiling), "{e}");
+        }
+    }
+
+    #[test]
+    fn a_wrapping_file_with_an_odd_side_the_grid_cannot_wrap_is_refused() {
+        let alive = deflate(&[0; 4 * 8]);
+        let ages = deflate(&[]);
+        let header = serde_json::json!({
+            "format": 1, "tiling": "triangular-12", "width": 7, "height": 4, "edges": "wrap",
+            "rule": "B456/S45", "generation": 0,
+            "sections": [
+                {"kind": "alive", "codec": "deflate", "bytes": alive.len()},
+                {"kind": "ages", "codec": "deflate", "bytes": ages.len()},
+            ],
+        });
+        let e = parse(&assemble(&header, &[&alive, &ages])).err().unwrap();
+        assert!(e.contains("even"), "{e}");
     }
 
     #[test]

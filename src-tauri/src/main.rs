@@ -35,7 +35,11 @@ fn builtin_dir(app: &tauri::App) -> Option<PathBuf> {
 }
 
 fn main() {
-    let sim = sim::Sim::launch(std::env::var_os("GLIFE_BENCH").is_some_and(|v| v == "1"));
+    let bench = sim::parse_bench(std::env::var("GLIFE_BENCH").ok().as_deref()).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(2);
+    });
+    let sim = sim::Sim::launch(bench);
     let (queue, receiver) = mpsc::channel();
     let latest = sim.latest();
     std::thread::Builder::new()
@@ -65,12 +69,14 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::tilings,
             commands::new_universe,
             commands::play,
             commands::pause,
             commands::step,
             commands::set_speed,
             commands::set_edges,
+            commands::set_rule,
             commands::edit,
             commands::undo,
             commands::redo,

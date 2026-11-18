@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use glife_engine::{Axis, Edges, PasteMode, Pattern, Rect, Tiling, Universe};
+use glife_engine::{Axis, Edges, PasteMode, Pattern, Rect, Rule, Tiling, Universe};
 
 use crate::history::{Cells, Entry, History};
 
@@ -34,13 +34,16 @@ pub struct Snapshot {
 pub type Latest = Arc<Mutex<Arc<Snapshot>>>;
 
 pub enum Command {
-    NewUniverse { width: u32, height: u32, edges: Edges },
+    /// Ignored when the size or the rule does not suit the tiling; the
+    /// command validates both first.
+    NewUniverse { width: u32, height: u32, edges: Edges, tiling: Tiling, rule: Rule },
     Play,
     Pause,
     Step,
     /// `None` means as fast as possible.
     SetSpeed(Option<f64>),
     SetEdges(Edges),
+    SetRule(Rule),
     /// Batches with the same `stroke` and no other command between them are
     /// one undo step.
     Edit { cells: Vec<(u32, u32)>, alive: bool, stroke: Option<u64> },
@@ -92,20 +95,19 @@ pub struct Sim {
 }
 
 impl Sim {
-    /// A 256 x 256 wrapping universe, paused; with `bench`, a 2048 x 2048
-    /// universe filled to 25 % and playing as fast as possible.
-    pub fn launch(bench: bool) -> Sim {
-        let mut sim = if bench {
-            let mut universe = Universe::new(2048, 2048, Edges::Wrap, Tiling::Square).expect("valid size");
-            universe.random_fill(0.25, os_seed());
-            Sim::new(universe, Duration::ZERO)
-        } else {
-            Sim::new(Universe::new(256, 256, Edges::Wrap, Tiling::Square).expect("valid size"), Duration::ZERO)
+    /// A 256 x 256 wrapping square universe, paused; with `bench`, a
+    /// 2048 x 2048 wrapping universe of that grid and rule filled to 25 % and
+    /// playing as fast as possible.
+    pub fn launch(bench: Option<(Tiling, Rule)>) -> Sim {
+        let Some((tiling, rule)) = bench else {
+            return Sim::new(Universe::new(256, 256, Edges::Wrap, Tiling::Square).expect("valid size"), Duration::ZERO);
         };
-        if bench {
-            sim.handle(Command::SetSpeed(None), Duration::ZERO);
-            sim.handle(Command::Play, Duration::ZERO);
-        }
+        let mut universe = Universe::new(2048, 2048, Edges::Wrap, tiling).expect("valid size");
+        universe.set_rule(rule).expect("rule suits the grid");
+        universe.random_fill(0.25, os_seed());
+        let mut sim = Sim::new(universe, Duration::ZERO);
+        sim.handle(Command::SetSpeed(None), Duration::ZERO);
+        sim.handle(Command::Play, Duration::ZERO);
         sim
     }
 
@@ -156,9 +158,11 @@ impl Sim {
             self.history.end_stroke();
         }
         match command {
-            Command::NewUniverse { width, height, edges } => {
-                if let Ok(universe) = Universe::new(width, height, edges, Tiling::Square) {
-                    self.replace(universe, now);
+            Command::NewUniverse { width, height, edges, tiling, rule } => {
+                if let Ok(mut universe) = Universe::new(width, height, edges, tiling) {
+                    if universe.set_rule(rule).is_ok() {
+                        self.replace(universe, now);
+                    }
                 }
             }
             Command::Load(universe) => self.replace(universe, now),
@@ -182,14 +186,23 @@ impl Sim {
                     self.saved_revision = 0;
                 }
             }
+            Command::SetRule(rule) => {
+                if rule != self.universe.rule() && self.universe.set_rule(rule).is_ok() {
+                    self.new_revision();
+                    // As with the edge mode, undo cannot take it back.
+                    self.saved_revision = 0;
+                }
+            }
             Command::Edit { cells, alive, stroke } => self.edit(cells, alive, stroke),
             Command::Place { pattern, x, y, mode } => {
-                let (w, h) = (pattern.width(), pattern.height());
-                if w <= self.universe.width() && h <= self.universe.height() {
+                // `x`, `y` is the top-left cell before the pattern is lined up with the grid.
+                let (stamp, x, y) = pattern.placement(x + (pattern.width() / 2) as i64, y + (pattern.height() / 2) as i64);
+                let (w, h) = (stamp.width(), stamp.height());
+                if pattern.tiling() == self.universe.tiling() && w <= self.universe.width() && h <= self.universe.height() {
                     let rects = self.universe.footprint(w, h, x, y);
                     if !rects.is_empty() {
                         self.change(&rects, |u| {
-                            u.place(&pattern, x, y, mode).expect("pattern fits the grid")
+                            u.place(&stamp, x, y, mode).expect("pattern fits the grid")
                         });
                     }
                 }
@@ -201,7 +214,8 @@ impl Sim {
             }
             Command::FlipRect(rect, axis) => {
                 if inside(rect, &self.universe) {
-                    self.change(&[rect], |u| u.flip_rect(rect, axis));
+                    let rects = self.universe.flip_footprint(rect, axis);
+                    self.change(&rects, |u| u.flip_rect(rect, axis));
                 }
             }
             Command::Clear => self.change(&[self.whole_grid()], Universe::clear),
@@ -388,6 +402,27 @@ impl Sim {
     }
 }
 
+/// Reads `GLIFE_BENCH`: unset or empty is no benchmark, `1` the square grid
+/// under B3/S23, and `<tiling id>[:<rule>]` another grid, under its default
+/// rule when none is given.
+pub fn parse_bench(value: Option<&str>) -> Result<Option<(Tiling, Rule)>, String> {
+    let value = match value {
+        None | Some("") => return Ok(None),
+        Some("1") => return Ok(Some((Tiling::Square, Tiling::Square.default_rule()))),
+        Some(value) => value,
+    };
+    let (id, rule) = match value.split_once(':') {
+        Some((id, rule)) => (id, Some(rule)),
+        None => (value, None),
+    };
+    let tiling = Tiling::parse(id).ok_or_else(|| format!("GLIFE_BENCH: unknown grid {id:?}"))?;
+    let rule = match rule {
+        Some(text) => Rule::parse(text, tiling).map_err(|e| format!("GLIFE_BENCH: {e}"))?,
+        None => tiling.default_rule(),
+    };
+    Ok(Some((tiling, rule)))
+}
+
 /// A seed from the OS: `RandomState` is keyed from OS randomness.
 pub fn os_seed() -> u64 {
     std::collections::hash_map::RandomState::new().build_hasher().finish()
@@ -567,7 +602,7 @@ mod tests {
     fn new_universe_is_empty_paused_and_replaces_the_old_one() {
         let mut sim = sim();
         sim.handle(Command::Play, Duration::ZERO);
-        sim.handle(Command::NewUniverse { width: 40, height: 30, edges: Edges::Dead }, Duration::ZERO);
+        sim.handle(Command::NewUniverse { width: 40, height: 30, edges: Edges::Dead, tiling: Tiling::Square, rule: Tiling::Square.default_rule() }, Duration::ZERO);
         let s = sim.snapshot();
         assert!(!s.playing);
         assert_eq!((s.universe.width(), s.universe.height()), (40, 30));
@@ -777,7 +812,8 @@ mod tests {
         assert!(!sim.snapshot().dirty);
         // New and opened universes start saved.
         paint(&mut sim, &[(4, 4)], None);
-        sim.handle(Command::NewUniverse { width: 20, height: 20, edges: Edges::Wrap }, ZERO);
+        let (tiling, rule) = (Tiling::Square, Tiling::Square.default_rule());
+        sim.handle(Command::NewUniverse { width: 20, height: 20, edges: Edges::Wrap, tiling, rule }, ZERO);
         assert!(!sim.snapshot().dirty);
         paint(&mut sim, &[(4, 4)], None);
         sim.handle(Command::Load(Universe::new(30, 30, Edges::Dead, Tiling::Square).unwrap()), ZERO);
@@ -911,9 +947,159 @@ mod tests {
         assert_eq!(sim.universe.generation(), 1000);
     }
 
+    fn grid_sim(tiling: Tiling, width: u32, height: u32, edges: Edges) -> Sim {
+        Sim::new(Universe::new(width, height, edges, tiling).unwrap(), ZERO)
+    }
+
+    #[test]
+    fn a_new_universe_of_each_grid_takes_its_tiling_and_rule() {
+        for tiling in Tiling::ALL {
+            let mut sim = sim();
+            let rule = tiling.default_rule();
+            sim.handle(Command::NewUniverse { width: 20, height: 12, edges: Edges::Wrap, tiling, rule }, ZERO);
+            let u = sim.snapshot();
+            let u = &u.universe;
+            assert_eq!((u.tiling(), u.rule(), u.width(), u.height()), (tiling, rule, 20, 12));
+            assert!(!sim.snapshot().dirty);
+        }
+        // A rule the grid cannot run, or an odd side that cannot wrap, changes nothing.
+        let mut sim = sim();
+        let hex = Tiling::Hexagonal;
+        let rule = Rule::parse("B3/S23", Tiling::Square).unwrap();
+        let too_many = Rule { birth: 1 << 7, survival: 0 };
+        sim.handle(Command::NewUniverse { width: 20, height: 12, edges: Edges::Wrap, tiling: hex, rule: too_many }, ZERO);
+        sim.handle(Command::NewUniverse { width: 20, height: 11, edges: Edges::Wrap, tiling: hex, rule }, ZERO);
+        assert_eq!((sim.universe.width(), sim.universe.tiling()), (16, Tiling::Square));
+    }
+
+    #[test]
+    fn set_edges_on_an_odd_side_is_refused_for_the_grids_that_need_even() {
+        for (tiling, width, height, refused) in [
+            (Tiling::Square, 15, 15, false),
+            (Tiling::Hexagonal, 15, 15, true),
+            (Tiling::Hexagonal, 15, 16, false),
+            (Tiling::Triangular12, 16, 15, true),
+            (Tiling::Triangular3, 15, 16, true),
+            (Tiling::Triangular3, 16, 16, false),
+        ] {
+            let mut sim = grid_sim(tiling, width, height, Edges::Dead);
+            sim.handle(Command::SetEdges(Edges::Wrap), ZERO);
+            let wrapped = sim.universe.edges() == Edges::Wrap;
+            assert_eq!(wrapped, !refused, "{tiling:?} {width} x {height}");
+        }
+    }
+
+    #[test]
+    fn set_rule_applies_marks_unsaved_and_refuses_what_the_grid_cannot_run() {
+        let mut sim = grid_sim(Tiling::Square, 16, 16, Edges::Wrap);
+        let highlife = Rule::parse("B36/S23", Tiling::Square).unwrap();
+        sim.handle(Command::SetRule(highlife), ZERO);
+        assert_eq!(sim.universe.rule(), highlife);
+        assert!(sim.snapshot().dirty);
+        assert_eq!(sim.snapshot().universe.rule(), highlife);
+        // Undo cannot take it back, so the universe stays unsaved.
+        sim.handle(Command::MarkSaved { revision: sim.snapshot().revision }, ZERO);
+        assert!(!sim.snapshot().dirty);
+        sim.handle(Command::SetRule(Tiling::Square.default_rule()), ZERO);
+        assert!(sim.snapshot().dirty);
+        sim.handle(Command::Undo, ZERO);
+        assert!(sim.snapshot().dirty);
+        // Setting the rule it already has changes nothing.
+        let revision = sim.revision;
+        sim.handle(Command::SetRule(Tiling::Square.default_rule()), ZERO);
+        assert_eq!(sim.revision, revision);
+
+        let mut hex = grid_sim(Tiling::Hexagonal, 16, 16, Edges::Wrap);
+        let revision = hex.revision;
+        hex.handle(Command::SetRule(Rule { birth: 1 << 7, survival: 0 }), ZERO);
+        hex.handle(Command::SetRule(Rule { birth: 1, survival: 0 }), ZERO);
+        assert_eq!((hex.universe.rule(), hex.revision), (Tiling::Hexagonal.default_rule(), revision));
+    }
+
+    #[test]
+    fn the_new_rule_runs_from_the_next_generation() {
+        // A lone pair dies under B3/S23 and under B2/S, a third cell next to them is born only under B2.
+        let mut sim = grid_sim(Tiling::Square, 16, 16, Edges::Dead);
+        paint(&mut sim, &[(5, 5), (6, 5)], None);
+        sim.handle(Command::SetRule(Rule::parse("B2/S", Tiling::Square).unwrap()), ZERO);
+        sim.handle(Command::Step, ZERO);
+        assert!(sim.universe.get(5, 4) && sim.universe.get(6, 6) && !sim.universe.get(5, 5));
+    }
+
+    #[test]
+    fn undo_after_a_hexagonal_flip_that_reaches_past_the_selection_restores_every_cell() {
+        let mut sim = grid_sim(Tiling::Hexagonal, 16, 16, Edges::Wrap);
+        // Rows 0 and 2 are unshifted: a horizontal flip sends column x to 5 - x,
+        // so column 0 lands one past the selection, on column 7 where a cell sits.
+        paint(&mut sim, &[(2, 0), (4, 0), (3, 1), (2, 2), (7, 0), (7, 2), (7, 1)], None);
+        let before = state(&sim.universe);
+        let rect = Rect { x: 2, y: 0, w: 5, h: 4 };
+        assert_eq!(sim.universe.flip_footprint(rect, Axis::Horizontal), vec![Rect { w: 6, ..rect }]);
+        sim.handle(Command::FlipRect(rect, Axis::Horizontal), ZERO);
+        let flipped = state(&sim.universe);
+        assert_ne!(flipped, before);
+        assert!(!sim.universe.get(2, 0), "column 2 of an unshifted row mirrors to 7");
+        assert!(sim.universe.get(7, 0));
+        sim.handle(Command::Undo, ZERO);
+        assert_eq!(state(&sim.universe), before);
+        assert!(no_trail(&sim.universe));
+        sim.handle(Command::Redo, ZERO);
+        assert_eq!(state(&sim.universe), flipped);
+    }
+
+    #[test]
+    fn a_pattern_as_wide_as_a_non_square_grid_is_placed_or_ignored_never_a_panic() {
+        // 8 wide at an anchor of the other parity becomes 9 wide on the hexagonal grid.
+        let mut hex = grid_sim(Tiling::Hexagonal, 8, 8, Edges::Wrap);
+        let mut pattern = Pattern::new(8, 2, Tiling::Hexagonal, false);
+        pattern.set(0, 0, true);
+        // Top-left (0, 1): row 1 is shifted, so the pattern needs a ninth column.
+        hex.handle(Command::Place { pattern: Arc::new(pattern.clone()), x: 0, y: 1, mode: PasteMode::Or }, ZERO);
+        assert_eq!(hex.universe.live_count(), 0);
+        assert_eq!(hex.history.len(), (0, 0));
+        hex.handle(Command::Place { pattern: Arc::new(pattern), x: 0, y: 0, mode: PasteMode::Or }, ZERO);
+        assert!(hex.universe.get(0, 0));
+
+        // A pattern of another tiling is ignored.
+        let mut sim = sim();
+        let triangles = Pattern::new(2, 2, Tiling::Triangular3, false);
+        sim.handle(Command::Place { pattern: Arc::new(triangles), x: 0, y: 0, mode: PasteMode::Copy }, ZERO);
+        assert_eq!(sim.history.len(), (0, 0));
+    }
+
+    #[test]
+    fn bench_values_name_a_grid_and_a_rule() {
+        let square = Some((Tiling::Square, Tiling::Square.default_rule()));
+        assert_eq!(parse_bench(None), Ok(None));
+        assert_eq!(parse_bench(Some("")), Ok(None));
+        assert_eq!(parse_bench(Some("1")), Ok(square));
+        assert_eq!(
+            parse_bench(Some("hexagonal")),
+            Ok(Some((Tiling::Hexagonal, Tiling::Hexagonal.default_rule())))
+        );
+        assert_eq!(
+            parse_bench(Some("triangular-12:B4/S456")),
+            Ok(Some((Tiling::Triangular12, Rule::parse("B4/S456", Tiling::Triangular12).unwrap())))
+        );
+        assert!(parse_bench(Some("octagonal")).is_err());
+        assert!(parse_bench(Some("triangular-3:B4/S2")).is_err());
+    }
+
+    #[test]
+    fn bench_launch_opens_a_2048_wrapping_universe_of_the_grid_playing() {
+        let rule = Rule::parse("B3/S23", Tiling::Hexagonal).unwrap();
+        let sim = Sim::launch(Some((Tiling::Hexagonal, rule)));
+        let s = sim.snapshot();
+        let u = &s.universe;
+        assert_eq!((u.width(), u.height(), u.edges(), u.tiling(), u.rule()), (2048, 2048, Edges::Wrap, Tiling::Hexagonal, rule));
+        assert!(s.playing);
+        let share = u.live_count() as f64 / (2048.0 * 2048.0);
+        assert!((0.24..0.26).contains(&share), "{share}");
+    }
+
     #[test]
     fn launch_defaults() {
-        let sim = Sim::launch(false);
+        let sim = Sim::launch(None);
         let s = sim.snapshot();
         assert_eq!((s.universe.width(), s.universe.height()), (256, 256));
         assert_eq!(s.universe.edges(), Edges::Wrap);
