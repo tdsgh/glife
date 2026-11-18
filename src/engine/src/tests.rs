@@ -889,8 +889,19 @@ fn erasing_a_dead_cell_leaves_its_trail() {
     u.step();
     assert_eq!(u.trail(4, 4), 1);
     u.set(4, 4, false);
-    u.kill_rect(Rect { x: 0, y: 0, w: 8, h: 8 });
     assert_eq!(u.trail(4, 4), 1);
+}
+
+#[test]
+fn kill_rect_and_copy_placing_clear_trail_in_the_rectangle() {
+    let mut u = universe(8, 8, Edges::Dead, &[(4, 4), (1, 1)]);
+    u.step();
+    assert_eq!((u.trail(4, 4), u.trail(1, 1)), (1, 1));
+    u.kill_rect(Rect { x: 3, y: 3, w: 2, h: 2 });
+    assert_eq!((u.trail(4, 4), u.trail(1, 1)), (0, 1));
+    u.place(&pattern(2, 2, &[(0, 0)]), 0, 0, PasteMode::Copy).unwrap();
+    assert!(u.get(0, 0) && !u.get(1, 1) && u.trail(1, 1) == 0);
+    assert_storage_consistent(&u);
 }
 
 #[test]

@@ -36,7 +36,8 @@ it before anything else is built on top of it.
 - **Trail layer.** One `u8` per cell holding the generations since the rule
   killed the cell, saturating at 255. 0 means no trail. A death by the rule
   sets it to 1. A death by an edit, any birth, `clear` and `random_fill` set
-  it to 0. A bit layer marks the cells whose counter is between 1 and 254, so
+  it to 0. Cut, Delete and *Copy* placing set it to 0 across their whole
+  rectangle; erasing a single already-dead cell leaves its trail. A bit layer marks the cells whose counter is between 1 and 254, so
   each generation's cost grows with the number of live and trailing cells, not
   with the grid.
 - **Both layers are always kept**, whatever the UI shows, so switching to age

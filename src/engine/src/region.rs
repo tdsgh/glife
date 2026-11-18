@@ -158,9 +158,11 @@ impl Universe {
         for (rect, px, py) in self.segments(pattern.width(), pattern.height(), x, y) {
             for dy in 0..rect.h {
                 for dx in 0..rect.w {
-                    let alive = pattern.get(px + dx, py + dy);
-                    if alive || mode == PasteMode::Copy {
-                        self.set(rect.x + dx, rect.y + dy, alive);
+                    let (x, y) = (rect.x + dx, rect.y + dy);
+                    if pattern.get(px + dx, py + dy) {
+                        self.set(x, y, true);
+                    } else if mode == PasteMode::Copy {
+                        self.write_cell(x as usize, y as usize, false, self.age(x, y));
                     }
                 }
             }
@@ -168,7 +170,8 @@ impl Universe {
         Ok(())
     }
 
-    /// Kills every cell in `rect`, without trail. Ages stay.
+    /// Kills every cell in `rect` and clears every trail in it, so the
+    /// rectangle is blank. Ages stay.
     ///
     /// # Panics
     ///
@@ -177,7 +180,7 @@ impl Universe {
         self.check_rect(rect);
         for y in rect.y..rect.y + rect.h {
             for x in rect.x..rect.x + rect.w {
-                self.set(x, y, false);
+                self.write_cell(x as usize, y as usize, false, self.age(x, y));
             }
         }
     }
