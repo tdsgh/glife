@@ -16,6 +16,14 @@ You own `src/engine/` and the engine's tests. Load the `CLAUDE.md` of every subt
   any per-cell attribute in a separate layer. → ADR-006
 - Take every random seed as an argument; read no OS randomness.
 - Depend on no crate.
+- Give a cell set alive by an edit or placement age 0 and no trail; give a cell
+  born by the rule age 0 and a surviving cell age + 1, saturating at 65 535.
+- Keep a dead cell's age. Set its trail to 1 when the rule kills it, then count
+  up to 255; set it to 0 on any birth, edit-kill, `clear`, `random_fill`,
+  restore, and across the whole rectangle of kill, and of a Copy placement.
+- Keep both layers out of the B3/S23 step.
+- Capture the ages of live cells only; restore dead cells with age 0 and
+  trail 0.
 
 ## What you never do
 

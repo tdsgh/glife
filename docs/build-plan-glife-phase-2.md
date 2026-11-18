@@ -54,10 +54,11 @@ it before anything else is built on top of it.
 
 - **History lives on the simulation thread** (`src-tauri/src/history.rs`),
   next to the universe it changes. Every generation clears it, whether it
-  comes from play or a single step, as do `new_universe` and `open`. Commands
-  that arrive while playing are applied without being recorded. While playing,
-  undo and redo are ignored and reported as unavailable. `set_edges` neither
-  records nor clears.
+  comes from play or a single step, as do `new_universe` and `open`. An edit,
+  fill, clear, placement, delete or flip while playing is applied, not
+  recorded, and clears the history. While playing, undo and redo are ignored
+  and reported as unavailable. `set_edges` neither records nor clears; it
+  marks the universe unsaved, and undo cannot remove that mark.
 - **One entry per undo step**, holding before and after captures, the
   generation before and after, and the revision before and after. A stroke is
   every `edit` carrying the same `stroke` id with no other command between
@@ -198,6 +199,8 @@ it before anything else is built on top of it.
   - Accelerators are CmdOrCtrl + N, O, S, Shift+S, Z, Shift+Z (and Ctrl+Y off
     macOS), X, C, V and A. Delete has no accelerator; the webview handles that
     key.
+  - On macOS the web view takes Cmd+Shift+Z before the Edit menu; the UI
+    handles it as a fallback (`src/ui/controls/shortcuts.ts`).
   - Menu clicks reach the UI as a `menu` event carrying the item id.
 - **Edit menu swap.** While a text field has focus, the backend swaps the Edit
   menu for the platform's predefined text items (undo, redo, cut, copy, paste,
@@ -531,7 +534,7 @@ Read and write the pattern-file TOML, both variants.
 - Speed is derived for display: `c/4 diagonal`, `c/2 orthogonal`, and so on.
 
 ### `src-tauri/patterns/*.toml`
-About 30 files, among them:
+30 files, among them:
 - still lifes: block, beehive, loaf, boat, tub, pond, ship;
 - oscillators: blinker, toad, beacon, clock, pulsar, pentadecathlon, figure
   eight, Kok's galaxy, queen bee shuttle;

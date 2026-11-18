@@ -34,7 +34,10 @@ Rules here apply repo-wide. Where a subtree or an ADR owns the details, point at
 it instead of restating them — `→ ADR-0NN` refers to
 [docs/adr.md](docs/adr.md).
 
-- Change `src/ui/backend.ts` and `src-tauri/src/commands.rs` together.
+- Change `src/ui/backend.ts` and the Tauri command handlers registered in
+  `src-tauri/src/main.rs` together.
+- Keep `fixtures/universe-v1.glife` and `fixtures/pattern-v1.toml` loading.
+- Add a built-in pattern as one file in `src-tauri/patterns/`.
 
 ## Command index
 
@@ -45,8 +48,8 @@ it instead of restating them — `→ ADR-0NN` refers to
 | See what's planned and in what order | [docs/roadmap.md](docs/roadmap.md) |
 | Run the app in development | `npm run tauri dev` ([package.json:10](package.json)) |
 | Build the release binary | `npm run tauri build -- --no-bundle`; output `target/release/glife-app` |
-| Run the release binary on the benchmark universe | `GLIFE_BENCH=1 target/release/glife-app` ([src-tauri/src/main.rs:10](src-tauri/src/main.rs)) |
-| Time the engine on a 2048 × 2048 grid | `cargo test --release -p glife-engine -- --ignored --nocapture timing` ([src/engine/src/tests.rs:345](src/engine/src/tests.rs)) |
+| Run the release binary on the benchmark universe | `GLIFE_BENCH=1 target/release/glife-app` ([src-tauri/src/main.rs:38](src-tauri/src/main.rs)) |
+| Time the engine on a 2048 × 2048 grid | `cargo test --release -p glife-engine -- --ignored --nocapture timing` ([src/engine/src/tests.rs:1051](src/engine/src/tests.rs)) |
 
 ## Execution guardrails
 

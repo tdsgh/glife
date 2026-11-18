@@ -16,6 +16,10 @@ tests. Load the `CLAUDE.md` of every subtree you touch.
   defines; never as JSON.
 - Route every change to the universe through the simulation thread's command
   queue.
+- Write every file through `glife_file::write_atomic`.
+- Never send a file path to the UI; send file names for display.
+- Read the latest snapshot for commands that only read; send every change
+  through the queue. → ADR-011
 
 ## What you never do
 

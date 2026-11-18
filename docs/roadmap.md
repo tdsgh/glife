@@ -21,7 +21,7 @@ saved at each step of the way.
 | # | Phase | Status | Phase document |
 |---|---|---|---|
 | 1 | Classic Life | Done | [glife-phase-1.md](glife-phase-1.md) |
-| 2 | Patterns | In progress | [glife-phase-2.md](glife-phase-2.md) |
+| 2 | Patterns | Done | [glife-phase-2.md](glife-phase-2.md) |
 | 3 | Non-square tilings | Planned | — |
 | 4 | Closed surfaces | Planned | — |
 | 5 | 3D universes | Planned | — |
@@ -155,6 +155,9 @@ A square 2D universe with no edges.
 - **Transfer speed on Windows.** Moving cells from the engine to the UI may be
   slower in the Windows webview than on macOS and Linux. Verified on macOS; not
   yet measured on Windows or Linux. Accepted debt, not a gate for any phase.
+- **Phase 2 checks not run.** Verified on macOS; Windows and Linux are
+  deferred, as in Phase 1. The frame-rate measurement covered the fit view
+  only, and the copy and paste round trip with Golly was not run.
 - **Large grids on screen.** A zoomed-out view of millions of cells needs a
   different way of drawing than a zoomed-in view of individual cells.
 - **Irregular cells on closed surfaces.** Cells with an unusual number of

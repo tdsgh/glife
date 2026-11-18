@@ -1,5 +1,5 @@
-//! Tauri commands. Each forwards to the simulation thread's queue, except
-//! `frame` and `pending_cells`, which only read.
+//! Tauri commands. Changes to the universe go through the simulation thread's
+//! queue; read-only commands read the latest snapshot or the pending slot. → ADR-011
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;

@@ -15,6 +15,9 @@ You own `src/ui/` and the UI's tests. Load the `CLAUDE.md` of every subtree you 
   `src/ui/state.ts`.
 - Draw the grid with the shader in `src/ui/view/`; no Canvas 2D renderer.
   → ADR-005
+- Draw library and pattern previews as SVG. → ADR-005
+- Define GLSL helper functions in the fragment shader; the vertex shader holds
+  `main()` only.
 
 ## What you never do
 
