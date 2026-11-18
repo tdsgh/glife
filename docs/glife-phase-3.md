@@ -21,9 +21,10 @@ The Phase 2 app, plus a choice of grid when a universe is created:
 | Triangular, 12 neighbors | triangle | 3 sharing an edge and 9 sharing only a corner |
 | Triangular, 3 neighbors | triangle | 3, the cells sharing an edge |
 
-Each grid has one rule of its own, fixed in this stage. Drawing, selection,
-placing, flipping, undo, both pattern libraries, saving and opening, age
-coloring and the trail all work on every grid.
+Each universe runs a Life-like birth/survival rule that the operator chooses
+and can change; each grid has a default rule and a few presets. Drawing,
+selection, placing, flipping, undo, both pattern libraries, saving and
+opening, age coloring and the trail all work on every grid.
 
 A universe keeps the grid it was created with. Its edges wrap or are dead, as
 on the square grid.
@@ -33,7 +34,9 @@ on the square grid.
 **In.**
 - Choosing the grid when creating a universe: square, hexagonal, triangular
   with 12 neighbors, triangular with 3 neighbors.
-- One fixed rule per grid, shown with the grid's name.
+- A Life-like birth/survival rule for each universe, chosen when creating it
+  and changeable while it is open, from the grid's presets or typed in; a
+  default rule for each grid; the rule shown with the grid's name.
 - Hexagonal and triangular universes shaped as rectangles, with wrapping or
   dead edges, 3 to 2048 cells per side.
 - Drawing and erasing cells, random fill and clear, play, step, speed, zoom,
@@ -50,8 +53,8 @@ on the square grid.
 **Out.**
 - Changing the grid of an existing universe; converting a pattern from one
   grid to another.
-- Editing or choosing the rule. Each grid has one rule in this stage; Phase 6
-  makes rules editable.
+- Rule families beyond birth/survival counts, such as multi-state
+  "Generations" rules and Larger than Life (Phase 6).
 - Rotating patterns or selections, including turns of 60° on the hexagonal grid.
 - Hexagonal universes shaped as a rhombus.
 - Other neighborhoods on the hexagonal grid, such as the 12 cells within two
@@ -62,12 +65,12 @@ on the square grid.
 
 ## 4. Choosing a grid
 
-**Can see.** The New universe dialog offers the four grids, with width, height
-and edges as today. Square stays the default. The status bar shows the grid's
+**Can see.** The New universe dialog offers the four grids, with width, height,
+edges and rule. Square stays the default. The status bar shows the grid's
 name next to its size, edges and rule.
 
-**Can change.** Pick the grid, width, height and edges when creating a
-universe. Width counts cells along a row; height counts rows. On the
+**Can change.** Pick the grid, width, height, edges and rule (§5) when
+creating a universe. Width counts cells along a row; height counts rows. On the
 hexagonal grid rows run across the window and every other row is shifted by
 half a cell. On the triangular grids triangles in a row point up and down in
 turn, and each row starts the other way round from the row above.
@@ -86,26 +89,40 @@ dialog; Open takes the grid from the file.
 
 ## 5. Rules
 
-**Can see.** The rule of the current universe, in birth/survival notation, in
-the status bar, as B3/S23 is shown today.
-
-Each grid's rule is taken from published work on Life-like rules for that
-grid. It must support at least one still life, one oscillator and, where one
-is known, a pattern that travels. The rules:
-
-| Grid | Rule |
-|---|---|
-| Square | B3/S23 |
-| Hexagonal | To be chosen. Candidate: B2/S35, Carter Bays' hexagonal Life rule, which has a glider |
-| Triangular, 12 neighbors | To be chosen from Bays' rules for this grid, which include ones with gliders and glider guns |
-| Triangular, 3 neighbors | To be chosen |
-
-A rule is chosen together with the built-in patterns that run under it.
-
-A neighbor count on each grid is the number of live cells among exactly the
+A rule says for how many live neighbors a dead cell is born (B) and a live
+cell survives (S), written in birth/survival notation such as B3/S23. A
+neighbor count on each grid is the number of live cells among exactly the
 neighbors in §2, across a wrapping edge as well.
 
-**Cannot.** Change the rule (Phase 6). Run one grid's rule on another grid.
+**Can see.** The rule of the current universe, in birth/survival notation, in
+the status bar. For each grid, a short list of presets: its default rule
+first, then a few alternatives.
+
+Each grid's default rule is taken from published work on Life-like rules for
+that grid where one fits. It supports at least one oscillator, a still life
+where the rule allows one, and a travelling pattern where one is known. The
+built-in patterns of each grid run under its default rule.
+
+| Grid | Default rule | Other presets |
+|---|---|---|
+| Square | B3/S23, Conway's Life | HighLife B36/S23, Seeds B2/S, Day & Night B3678/S34678 |
+| Hexagonal | B2/S35, Carter Bays' hexagonal Life, which has a glider and oscillators but cannot have a still life | B3/S23, which has still lifes but no glider |
+| Triangular, 12 neighbors | B456/S45, Bays' rule with a glider and the most oscillators on this grid | B4/S456, Bays' rule with a smaller, more frequent glider |
+| Triangular, 3 neighbors | B2/S013, found by search: random fills settle into the most still lifes and oscillators; a lone triangle survives | B2/S23, in which lone triangles die |
+
+**Can change.**
+- Choose the rule when creating a universe: a preset of the grid, or one
+  typed in. A new universe starts with the grid's default rule.
+- Change the rule of the open universe, paused or running. The cells stay as
+  they are and run under the new rule from the next generation. Like
+  switching the edge mode, this is not an undo step, and the universe counts
+  as changed.
+
+A typed rule is refused, with a message giving the reason, when it names a
+neighbor count the grid does not have, or birth on 0 neighbors.
+
+**Cannot.** Use birth on 0 neighbors. Use rule families beyond birth/survival
+counts (Phase 6).
 
 ## 6. Viewing and drawing
 
@@ -154,27 +171,36 @@ Every pattern belongs to one grid: square, hexagonal, triangular with
 12 neighbors, or triangular with 3 neighbors. The two triangular grids share
 cell shapes but not behavior, so their patterns are kept apart.
 
+Every pattern also records the rule it was made under. A pattern behaves as
+described only under that rule, but its cells can be placed under any rule of
+the same grid.
+
 **Can see.** Both library panels list the patterns of the current universe's
-grid, with the same entries as in Phase 2. A line under each list says how many
-patterns belong to other grids. The preview pictures draw hexagons and
-triangles in their true shape.
+grid, with the same entries as in Phase 2. Each entry shows its rule; an entry
+made under a rule other than the universe's is marked. A line under each list
+says how many patterns belong to other grids. The preview pictures draw
+hexagons and triangles in their true shape.
 
 **Can change.**
-- **Built-in library.** A small set of published patterns for each new grid:
-  still lifes, oscillators and, where known, travelling patterns, each with
-  its period, speed and a short description, as for the square grid. Each new
-  grid ships with at least a few patterns. Like the square patterns, each one
-  is checked against its stated facts every time the app loads the library,
-  and a pattern that fails is not offered.
+- **Built-in library.** A small set of patterns for each new grid, published
+  or found while choosing its default rule: still lifes, oscillators and,
+  where known, travelling patterns, each with its period, speed and a short
+  description, as for the square grid. Each new grid ships with at least a
+  few patterns. Like the square patterns, each one is checked under its own
+  rule against its stated facts every time the app loads the library, and a
+  pattern that fails is not offered.
 - **Personal library.** Save, name, comment, rename, delete, place and export,
-  as in Phase 2. A pattern is saved with the grid of the universe it came
-  from. Names stay unique across the whole personal library, whatever the
+  as in Phase 2. A pattern is saved with the grid and rule of the universe it
+  came from. Names stay unique across the whole personal library, whatever the
   grid.
+- **Place a pattern made under another rule** of the same grid, from either
+  library, the clipboard or a file. The operator is told the pattern's rule
+  differs from the universe's, as for RLE with another rule in Phase 2.
 - **Show the other grids' patterns.** A switch lists them too, marked with
   their grid. They can be renamed, commented on, exported or deleted there,
   but not placed.
 
-Personal patterns saved in Phase 2 are square patterns.
+Personal patterns saved in Phase 2 are square patterns under B3/S23.
 
 **Cannot.** Place a pattern into a universe of another grid. Convert a pattern
 to another grid.
@@ -182,11 +208,11 @@ to another grid.
 ## 9. Saving and opening universes
 
 **Can change.** Save and open as in Phase 2. A saved universe records its grid
-and rule, and opens into a universe of the same grid. Universe files saved in
-Phase 2 open as square universes.
+and rule, and opens into a universe of the same grid and rule. Universe files
+saved in Phase 2 open as square universes under B3/S23.
 
-When a file names a grid this version of glife does not know, the operator is
-told so and the current universe stays.
+When a file names a grid this version of glife does not know, or a rule its
+grid cannot run, the operator is told so and the current universe stays.
 
 **Cannot.** Open an RLE file as a hexagonal or triangular universe (§10).
 
@@ -194,8 +220,8 @@ told so and the current universe stays.
 
 **Can change.**
 - **Copy** on a hexagonal or triangular grid puts the pattern on the system
-  clipboard as glife's own pattern text, which names the grid, the size and
-  the cells, and which a person can read. On the square grid copy still writes
+  clipboard as glife's own pattern text, which names the grid, the rule, the
+  size and the cells, and which a person can read. On the square grid copy still writes
   RLE.
 - **Paste** reads either kind of text. Pattern text for another grid is refused
   with a message naming both grids. RLE pasted into a hexagonal or triangular
@@ -213,7 +239,8 @@ in this stage.
 
 ## 11. Cross-cutting requirements
 
-- The Phase 1 and Phase 2 targets hold on every grid: a 2048 × 2048 universe at
+- The Phase 1 and Phase 2 targets hold on every grid under every rule: a
+  2048 × 2048 universe at
   60 frames per second and at least 30 generations per second, with plain and
   with age coloring and the trail on. The window keeps responding within a
   tenth of a second while drawing, placing, selecting, undoing and saving.
@@ -222,9 +249,9 @@ in this stage.
   saved.
 - Universe files and personal patterns saved in Phases 1 to 3 open in every
   later stage.
-- Each grid's rule is checked on small hand-worked cases, including cells
-  across a wrapping edge and, on the triangular grids, both orientations of
-  triangle.
+- The generation step is checked on every grid, under its default rule and
+  other rules, on small hand-worked cases, including cells across a wrapping
+  edge and, on the triangular grids, both orientations of triangle.
 - The built-in library is correct on every grid, by the checks of Phase 2.
 - Phase 1 and Phase 2 checks still pass on the square grid. No existing key or
   shortcut changes meaning.
@@ -245,7 +272,8 @@ in this stage.
 - **New but straightforward.** The grid choice in the dialog and status bar;
   drawing hexagons and triangles and their grid lines; finding the cell under
   the pointer; stepped selection outlines; library panels filtered by grid;
-  pattern text on the clipboard; pattern file import and export.
+  pattern text on the clipboard; pattern file import and export; choosing and
+  showing the rule.
 - **Known costs.**
   - The 12-neighbor triangular grid counts half as many neighbors again as the
     square grid, and does so differently for triangles pointing up and down.
@@ -254,6 +282,9 @@ in this stage.
   - On the hexagonal grid, which cells are neighbors depends on whether a row
     is shifted, so the generation step has two cases where the square grid has
     one.
+  - The square grid's step is tuned for B3/S23. Any other rule on the square
+    grid runs through the general step the other grids use, which must hold
+    the same speed.
   - Flipping and placing must keep cells on cells of the same shape and
     orientation, which adds offsets the square grid never needed.
   - Shading the zoomed-out view by the share of live cells is harder when
@@ -261,16 +292,14 @@ in this stage.
   - Collecting the built-in patterns is research: few patterns for these grids
     are published in a form glife can read, and for the 3-neighbor triangular
     grid little is published at all.
-- **Blocked.** Nothing. The three new rules are not chosen yet (§5, §13).
+- **Blocked.** Nothing.
 
 ## 13. Open questions
 
-- The rule for each new grid (§5). It is settled by a research step at the
-  start of the build plan, which chooses each rule and collects its published
-  patterns, and is approved before the rest is built. The 3-neighbor
-  triangular grid has the fewest published rules; if none has published
-  patterns, its built-in set may hold only still lifes and oscillators found
-  while choosing the rule.
+- Settled: the default rule for each new grid (§5), chosen by the build
+  plan's research step. No published rule for the 3-neighbor triangular grid
+  has patterns, so its default was found by search, and its built-in set holds
+  only still lifes and oscillators found while choosing it.
 - Exchange with Golly and LifeViewer. Both write hexagonal patterns as RLE with
   an `H` after the rule and triangular ones with an `L`, on a slanted or
   emulated square grid. Whether to read and write these in a later stage is
@@ -280,8 +309,8 @@ in this stage.
 
 Phase 4 brings closed surfaces; whether they use hexagonal and triangular
 cells as well as squares is a roadmap question, and this stage's grids are the
-candidates. Phase 6 makes the rule of every grid editable and adds rule
-families; each grid's rule from this stage becomes its preset there. Rotation,
+candidates. Phase 6 adds rule families beyond birth/survival counts, choosable
+the same way as the rules of this stage. Rotation,
 including turns of 60° on the hexagonal grid and 120° on the triangular ones,
 remains for later, as does exchanging non-square patterns with other programs.
 
@@ -295,7 +324,8 @@ two triangular grids are told apart there is still to decide.
 
 Still to decide: how hexagons and triangles map onto the existing row-by-row
 storage, and how the step handles shifted rows and the two orientations of
-triangle at word speed; how the screen learns a universe's grid, since today
+triangle at word speed, under any birth/survival rule; how the screen learns
+a universe's grid and rule, since today
 it learns everything about the universe from what each frame carries; how the
 pointer finds a cell; and how flips and placements choose their half-cell or
 one-row offset. The 12-neighbor triangular step decides whether the speed

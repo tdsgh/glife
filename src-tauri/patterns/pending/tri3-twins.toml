@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-3"
+offset = 0
+name = "Twins"
+category = "oscillator"
+description = "Two triangles one apart: the triangle between them comes alive and dies again."
+period = 2
+rle = """
+#N Twins
+x = 3, y = 1, rule = B2/S013
+obo!
+"""

@@ -1,0 +1,11 @@
+format = 1
+tiling = "triangular-3"
+offset = 0
+name = "Hook"
+category = "still-life"
+description = "Three triangles closing in an empty one, with a fourth on top."
+rle = """
+#N Hook
+x = 3, y = 3, rule = B2/S013
+2bo$obo$bo!
+"""

@@ -1,0 +1,11 @@
+format = 1
+tiling = "triangular-3"
+offset = 0
+name = "Pair"
+category = "still-life"
+description = "Two triangles sharing an edge."
+rle = """
+#N Pair
+x = 1, y = 2, rule = B2/S013
+o$o!
+"""

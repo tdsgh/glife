@@ -1,0 +1,12 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Triad"
+category = "oscillator"
+description = "Three cells that do not touch, swapping with their mirror image every generation."
+period = 2
+rle = """
+#N Triad
+x = 2, y = 3, rule = B2/S35
+o$bo$o!
+"""

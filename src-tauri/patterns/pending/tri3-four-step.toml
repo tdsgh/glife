@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-3"
+offset = 1
+name = "Four step"
+category = "oscillator"
+description = "Five triangles with period 4."
+period = 4
+rle = """
+#N Four step
+x = 4, y = 2, rule = B2/S013
+o$4o!
+"""

@@ -1,0 +1,12 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Ring"
+category = "oscillator"
+description = "A ring of six cells around an empty center, returning every 3 generations."
+period = 3
+rle = """
+#N Ring
+x = 3, y = 3, rule = B2/S35
+b2o$obo$b2o!
+"""

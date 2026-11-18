@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-12"
+offset = 1
+name = "Pinwheel"
+category = "oscillator"
+description = "Seven triangles that keep their shape every generation and change only their orientation, back at the start after 6."
+period = 6
+rle = """
+#N Pinwheel
+x = 4, y = 3, rule = B456/S45
+bo$obo$4o!
+"""

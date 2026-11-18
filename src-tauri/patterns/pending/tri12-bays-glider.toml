@@ -1,0 +1,14 @@
+format = 1
+tiling = "triangular-12"
+offset = 0
+name = "Bays glider"
+category = "spaceship"
+description = "The glider of this rule, described by Carter Bays: moves one triangle width to the right every 8 generations, appearing upside down halfway."
+period = 8
+dx = 2
+dy = 0
+rle = """
+#N Bays glider
+x = 7, y = 3, rule = B456/S45
+2b3o$2o2bobo$2bobo!
+"""

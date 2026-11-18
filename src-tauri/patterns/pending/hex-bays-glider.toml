@@ -1,0 +1,14 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Bays glider"
+category = "spaceship"
+description = "Carter Bays' glider for this rule: ten cells that move one cell to the left every 5 generations."
+period = 5
+dx = -1
+dy = 0
+rle = """
+#N Bays glider
+x = 6, y = 7, rule = B2/S35
+3bo$bo$o2bobo2$o2bobo$bo$3bo!
+"""

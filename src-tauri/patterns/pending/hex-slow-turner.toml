@@ -1,0 +1,12 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Slow turner"
+category = "oscillator"
+description = "Five cells that take 12 generations to come back to their start."
+period = 12
+rle = """
+#N Slow turner
+x = 5, y = 4, rule = B2/S35
+2bo$o$2bo$2bobo!
+"""

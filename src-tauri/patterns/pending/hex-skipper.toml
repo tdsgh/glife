@@ -1,0 +1,12 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Skipper"
+category = "oscillator"
+description = "Alternates between three cells and four, back at its start after 4 generations."
+period = 4
+rle = """
+#N Skipper
+x = 4, y = 2, rule = B2/S35
+o2bo$bo!
+"""

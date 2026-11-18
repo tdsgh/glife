@@ -1,0 +1,11 @@
+format = 1
+tiling = "triangular-12"
+offset = 0
+name = "Hexagon"
+category = "still-life"
+description = "Six triangles around one point: the commonest still life under this rule."
+rle = """
+#N Hexagon
+x = 3, y = 2, rule = B456/S45
+3o$3o!
+"""

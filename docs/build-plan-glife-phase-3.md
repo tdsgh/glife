@@ -33,8 +33,9 @@ as it stands at commit `0eef2e7`:
 
 The stage's main risk is the 12-neighbor triangular step at 2048 × 2048.
 WP2 builds every step and measures it before anything else depends on it.
-The rules themselves are not chosen yet; WP1 chooses them and stops for
-approval.
+WP1 chose each grid's default rule and its patterns (Rules table below).
+Rules are set per universe in this stage, so any birth/survival rule runs on
+every grid, square included.
 
 ## Decisions taken
 
@@ -72,22 +73,30 @@ approval.
 ### Rules
 
 - **`Rule { birth: u16, survival: u16 }`**, bit `n` set when a count of `n`
-  neighbors gives birth or survival. It displays as `B…/S…`.
-- **One rule per grid in this stage**, from `Tiling::rule()`. A universe has
-  no rule field of its own; Phase 6 adds one.
-- **The square grid keeps its B3/S23 step unchanged.** The other three grids
-  share one bit-sliced step: per word, it adds the neighbor bits into a 4-bit
-  count across bit planes and applies the rule's birth and survival masks.
-  Ages and trail are updated by the existing pass, unchanged.
-- **The three rules are chosen in WP1.** On approval, the rules go into this
-  table, which WP2 implements:
+  neighbors gives birth or survival. It displays as `B…/S…` and parses from
+  that text, case-insensitive. `Rule::parse(text, tiling)` refuses a count
+  above the grid's neighbor count and birth on 0, with a message giving the
+  reason.
+- **A rule per universe.** `Universe` holds its rule. A new universe starts
+  with `Tiling::default_rule()`; `set_rule` changes it, refusing a rule the
+  grid cannot run. Changing the rule is not an undo step and marks the
+  universe changed, as `set_edges` does.
+- **Defaults and presets per grid.** `Tiling::presets()` lists
+  `(name, Rule)`, the default first:
 
-  | Grid | Rule | Source |
-  |---|---|---|
-  | `square` | B3/S23 | — |
-  | `hexagonal` | WP1 | WP1 |
-  | `triangular-12` | WP1 | WP1 |
-  | `triangular-3` | WP1 | WP1 |
+  | Grid | Default | Source | Other presets |
+  |---|---|---|---|
+  | `square` | B3/S23 Life | — | HighLife B36/S23, Seeds B2/S, Day & Night B3678/S34678 |
+  | `hexagonal` | B2/S35 | Bays 2005, Complex Systems 15, 245–252 | B3/S23 |
+  | `triangular-12` | B456/S45 | Bays 1994, Complex Systems 8, 127–150 ("4546") | B4/S456 (Bays "4644") |
+  | `triangular-3` | B2/S013 | found by search in WP1 | B2/S23 |
+
+  B2/S35 admits no still life, so the hexagonal built-in set has none.
+- **Two steps.** The square grid under B3/S23 keeps its step unchanged. Every
+  other case, the square grid under another rule included, goes through one
+  bit-sliced step: per word, it adds the neighbor bits into a 4-bit count
+  across bit planes and applies the rule's birth and survival masks. Ages and
+  trail are updated by the existing pass, unchanged.
 
 ### Patterns on non-square grids
 
@@ -120,6 +129,11 @@ approval.
   wrapped or clipped, so history captures them first.
 - **A pattern is placed only into a universe of its own tiling.** The host
   refuses anything else with a message naming both grids.
+- **A pattern's rule is host metadata.** The rule a pattern was made under
+  travels with it in the pattern file, pattern text, RLE header, library
+  entries and the pending pattern; the engine `Pattern` carries none. Placing
+  a pattern under another rule of the same tiling proceeds, with a notice
+  naming the pattern's rule, as RLE with another rule does in Phase 2.
 
 ### Transfer
 
@@ -127,27 +141,32 @@ approval.
   code. A v1 reader already ignores unknown flag bits, and a square frame
   sets them to 0, so `fixtures/frame-v1.bin` and
   `fixtures/frame-v1-layers.bin` stay valid.
+- **The rule rides in word 10.** Bit 0 is the edge mode (0 wrap, 1 dead).
+  Bits 1–13 hold the birth mask and bits 14–26 the survival mask, each XORed
+  with the grid's default rule, so a universe under its default rule sends
+  the same word as today and the fixtures above decode as square B3/S23.
 - **Placement buffer.** `pending_cells` returns the pending pattern exactly as
   `place` would stamp it at a given anchor with given flips: `u32` LE words
   `[width, height, left, top]`, where `left` and `top` are `i32` offsets of
   the top-left cell from the anchor, then the rows as in the pattern buffer.
   The UI caches it by `(flipH, flipV, x & 1, y & 1)` of the anchor and no
   longer flips the preview itself.
-- **`tilings` command.** Returns, for each grid, its id, display name, rule
-  text, and whether wrapping needs an even width and an even height. The New
-  universe dialog, the status bar and the library panels read it. The UI holds
-  no rule text of its own.
+- **`tilings` command.** Returns, for each grid, its id, display name,
+  neighbor count, default rule as text and masks, presets as name and text,
+  and whether wrapping needs an even width and an even height. The New
+  universe dialog, the rule control, the status bar and the library panels
+  read it. The UI hard-codes no rule.
 
 ### Files and formats
 
-- **glife file.** `tiling` takes the four ids; `rule` is the grid's rule
+- **glife file.** `tiling` takes the four ids; `rule` is the universe's rule
   text. A reader refuses an unknown tiling with a message saying the file
-  needs a newer glife. A rule other than the grid's rule loads with a notice,
-  as RLE does. `format` stays 1. A new fixture,
+  needs a newer glife, and a rule the grid cannot run with a message naming
+  it. `format` stays 1. A new fixture,
   `fixtures/universe-hex-v1.glife`, is kept loading from now on.
 - **Pattern file.** `tiling` takes the four ids. A new key, `offset` (0 or 1,
   default 0), carries the offset bit. `rle` holds the cells as RLE whose
-  header names the grid's rule. `format` stays 1.
+  header names the rule the pattern was made under. `format` stays 1.
 - **Pattern text** is the pattern-file TOML without `created` and `changed`.
   On the clipboard: copying on a non-square grid writes pattern text; on the
   square grid it writes RLE, as today. Paste reads pattern text when the text
@@ -158,8 +177,9 @@ approval.
   the same files the personal library holds. File menu: Import Pattern… and
   Export Pattern…, enabled on every grid.
 - **Built-in library.** One folder as today; each file's `tiling` says which
-  grid it belongs to. The check runs on a dead-edged universe of that grid,
-  and compares against the pattern placed with the alignment rules above.
+  grid it belongs to. The check runs on a dead-edged universe of that grid
+  under the pattern's rule, and compares against the pattern placed with the
+  alignment rules above.
   Guns on a non-square grid are shipped only if WP1 finds one and the gun
   check works on that grid.
 
@@ -179,7 +199,13 @@ approval.
 - **Grid lines** follow cell edges once cells are large enough, as for
   squares. **The selection outline** is drawn where a selected cell meets an
   unselected one, so it is stepped on non-square grids.
-- **Status bar** shows `<grid name> · W × H · <edges> · <rule>`.
+- **Status bar** shows `<grid name> · W × H · <edges> · <rule>`, the rule
+  read from the frame.
+- **Rule field.** A preset select for the grid plus a text box. The New
+  universe dialog has one, starting at the grid's default and reset to the new
+  grid's default when the grid changes. A Rule… button on the toolbar opens
+  the same field for the open universe; Apply sends `set_rule`. A refused rule
+  shows the backend's message under the field.
 - **No new keys.**
 
 ### Command contract
@@ -188,20 +214,21 @@ approval.
 
 | Command | Change | Returns | WP |
 |---|---|---|---|
-| `tilings` | new | `[{ id, name, rule, wrapEvenWidth, wrapEvenHeight }]` | 4 |
-| `new_universe` | + `tiling` | error text if the size does not allow wrapping | 4 |
+| `tilings` | new | `[{ id, name, neighbors, defaultRule: { text, birth, survival }, presets: [{ name, rule }], wrapEvenWidth, wrapEvenHeight }]` | 4 |
+| `new_universe` | + `tiling`, `rule` | error text if the size does not allow wrapping or the grid cannot run the rule | 4 |
 | `set_edges` | — | error text if the size does not allow wrapping | 4 |
+| `set_rule` | new: `rule` text | error text if the grid cannot run the rule | 4 |
 | `pending_cells` | + `flipH`, `flipV`, `x`, `y` | raw placement buffer | 4 |
 | `place` | aligns per Decisions taken | — | 4 |
 | `copy_selection`, `cut_selection` | pattern text on non-square grids | — | 5 |
-| `paste` | reads pattern text or RLE; refuses another grid | `PendingInfo` or error | 5 |
-| `begin_place` | refuses a library entry of another grid | `PendingInfo` or error | 5 |
-| `library_list` | each entry gains `tiling` | as before | 5 |
+| `paste` | reads pattern text or RLE; refuses another grid; notice for another rule | `PendingInfo` or error | 5 |
+| `begin_place` | refuses a library entry of another grid; notice for another rule | `PendingInfo` or error | 5 |
+| `library_list` | each entry gains `tiling` and `rule` | as before | 5 |
 | `import_pattern` | new | `PendingInfo`, or null | 5 |
 | `export_pattern` | new; same arguments as `export_rle` | — | 5 |
 | `set_menu_state` | + `tiling` | — | 5 |
 
-`PendingInfo` gains `tiling`.
+`PendingInfo` gains `tiling` and `rule`.
 
 ## Step routing at a glance
 
@@ -247,7 +274,8 @@ glife coordinates first, and the conversion is stated.
 - `src-tauri/patterns/pending/*.toml`: one pattern file per candidate, in the
   built-in format with `tiling`, `offset`, `category`, `description`,
   `period`, `dx`/`dy`. At least three patterns per grid, at least one still
-  life and one oscillator each, and a travelling pattern where one is known.
+  life where the rule allows one and one oscillator each, and a travelling
+  pattern where one is known.
   The loader does not read subfolders, so these files are inert until WP5
   moves them.
 - The step report: the three rules with sources, what each rule does from a
@@ -264,32 +292,41 @@ so the approval covers it.
 
 ### `src/engine/src/lib.rs` (new private `tiling.rs`, `step_generic.rs`)
 - Public `Tiling` with the four variants, `ALL`, `id()`, `parse(id)`,
-  `name()`, `rule()`, `wrap_needs_even() -> (bool, bool)`.
-- Public `Rule` per Decisions taken, with `Display`.
-- `Universe::new(width, height, edges, tiling)` and `tiling()`. A new
-  `SizeError` case for an odd side with wrapping edges.
+  `name()`, `neighbors()`, `default_rule()`, `presets()`,
+  `wrap_needs_even() -> (bool, bool)`.
+- Public `Rule` per Decisions taken, with `Display` and `parse`.
+- `Universe::new(width, height, edges, tiling)`, starting under the default
+  rule, and `tiling()`. A new `SizeError` case for an odd side with wrapping
+  edges.
+- `rule()` and `set_rule(rule) -> Result`.
 - `set_edges` returns `Result`, refusing wrapping on an odd side.
-- `step` dispatches: square to the existing `step.rs`, the others to the
-  generic step. The ages pass is unchanged.
-- `from_parts` takes the tiling.
+- `step` dispatches: square under B3/S23 to the existing `step.rs`,
+  everything else to the generic step. The ages pass is unchanged.
+- `from_parts` takes the tiling and the rule.
 
 ### `src/engine/src/step_generic.rs`
 The bit-sliced step from Decisions taken. Per row it builds the shifted
-neighbor words the grid needs (hexagonal: by row parity; triangular: by the
-alternating up/down mask of the row), adds them into four bit planes, and
-applies the rule. Wrapping follows the existing `row_sums` approach for
+neighbor words the grid needs (square: the 8 neighbors; hexagonal: by row
+parity; triangular: by the alternating up/down mask of the row), adds them
+into four bit planes, and applies the rule. Wrapping follows the existing `row_sums` approach for
 columns and rows.
 
 ### Call sites
 Every `Universe::new` and `from_parts` in `src-tauri/` passes
-`Tiling::Square`, with no other change in behavior. The engine agent makes
+`Tiling::Square` (and B3/S23 to `from_parts`), with no other change in
+behavior. The engine agent makes
 this mechanical change so the workspace builds.
 
 ### Tests
 - A naive reference stepper for each grid: for every cell, it lists its
   neighbors from the coordinate rules and counts. Random universes of sizes
   3…70 in both dimensions, wrapping (even sides) and dead, 50 generations
-  each, match the bitwise step cell for cell, ages and trail included.
+  each, under the grid's presets and random rules the grid can run (the
+  square grid included), match the bitwise step cell for cell, ages and trail
+  included.
+- `Rule` parses and displays every preset; `parse` and `set_rule` refuse a
+  count above the grid's neighbor count and birth on 0, and `set_rule`
+  changes nothing when it refuses.
 - Neighbor lists by hand: the 6, 12 and 3 neighbors of a cell in an even and
   an odd row, an up and a down triangle, and at each wrapping edge and
   corner.
@@ -300,9 +337,10 @@ this mechanical change so the workspace builds.
   returns after its period, on its own grid.
 - Phase 1 and Phase 2 tests still pass for the square grid.
 - The `#[ignore]` timing test reports ms per generation at 2048² for each
-  grid, after a 25 % fill and after 1000 generations.
+  grid under its default rule, and for the square grid under B36/S23, after a
+  25 % fill and after 1000 generations.
 
-The target is under 20 ms per generation on every grid on the dev machine.
+The target is under 20 ms per generation in every row on the dev machine.
 A timing over target is reported as a deviation, which stops the run before
 WP3.
 
@@ -345,33 +383,39 @@ WP3.
 > `agent: host` · `model: sonnet` · `gate: test` · `parallel: yes` · `reads: stage §4, §5, §7, §9; Decisions taken › Transfer, Files and formats (glife file), Command contract`
 
 ### `src-tauri/src/frame.rs`
-Flags bits 8–11 carry the tiling code.
+Flags bits 8–11 carry the tiling code; word 10 carries the rule per Decisions
+taken › Transfer.
 
 ### `src-tauri/src/sim.rs`
-- `NewUniverse` gains `tiling`. `SetEdges` is validated in the command
-  before it is queued.
+- `NewUniverse` gains `tiling` and `rule`. `SetEdges` and the new `SetRule`
+  are validated in the command before they are queued; `SetRule` behaves as
+  `SetEdges` does for history and the saved state.
 - `FlipRect` captures `flip_footprint` instead of the rectangle.
 - Bench mode: `GLIFE_BENCH=1` keeps the square universe;
-  `GLIFE_BENCH=<tiling id>` opens a 2048 × 2048 wrapping universe of that
-  grid with a 25 % fill.
+  `GLIFE_BENCH=<tiling id>[:<rule>]` opens a 2048 × 2048 wrapping universe of
+  that grid, under the rule if given, with a 25 % fill.
 
 ### `src-tauri/src/commands.rs`, `main.rs`
 The WP4 rows of the command contract. `place` and `pending_cells` share the
 engine's `placement`.
 
 ### `src-tauri/src/glife_file.rs`
-Reads and writes the tiling per Decisions taken; writes the grid's rule.
+Reads and writes the tiling and the universe's rule per Decisions taken.
 
 ### Tests
 - `fixtures/frame-v1.bin` and `fixtures/frame-v1-layers.bin` still match
-  byte for byte. A hexagonal frame sets code 1 in bits 8–11.
-- A new universe of each grid, and `set_edges` on an odd side, through `Sim`.
+  byte for byte. A hexagonal frame sets code 1 in bits 8–11. A square frame
+  under B36/S23 carries the rule in word 10, and a frame under each grid's
+  default rule has 0 in bits 1–26.
+- A new universe of each grid, `set_edges` on an odd side, and `set_rule`
+  with a valid and a refused rule, through `Sim`.
 - An undo after a hexagonal horizontal flip that reaches past the selection
   restores every cell it touched.
 - `pending_cells` at anchors of both parities on each grid returns the
   buffer `place` then stamps.
-- Save and open of a universe of each grid gives the same cells, ages and
-  tiling. `fixtures/universe-hex-v1.glife`, committed by this WP, loads.
+- Save and open of a universe of each grid gives the same cells, ages,
+  tiling and rule. `fixtures/universe-hex-v1.glife`, committed by this WP
+  under B3/S23 rather than the default, loads under that rule.
   `fixtures/universe-v1.glife` still opens as square. An unknown tiling is
   refused with the newer-glife message.
 
@@ -379,14 +423,15 @@ Reads and writes the tiling per Decisions taken; writes the grid's rule.
 > `agent: host` · `model: sonnet` · `gate: test` · `parallel: yes` · `reads: stage §8, §10; Decisions taken › Files and formats, Command contract`
 
 ### `src-tauri/src/pattern_file.rs`
-`tiling` with four ids and `offset`. Parsing the cells checks the RLE rule
-against the grid's rule. `pattern_text(&Pattern, name, comment)` and
-`parse_pattern_text`.
+`tiling` with four ids and `offset`. Parsing the cells keeps the RLE rule
+and refuses one the grid cannot run. `pattern_text(&Pattern, rule, name,
+comment)` and `parse_pattern_text`.
 
 ### `src-tauri/src/clipboard.rs`
 Copy and cut write pattern text on non-square grids. Paste tries pattern
 text, then RLE, and refuses a pattern of another grid, and RLE on a
-non-square universe.
+non-square universe. A pattern under another rule of the same grid pastes
+with a notice.
 
 ### `src-tauri/src/files.rs`, `menu.rs`
 `import_pattern` and `export_pattern`, with a `.toml` filter. File menu gains
@@ -394,17 +439,21 @@ Import Pattern… and Export Pattern…. `set_menu_state` takes `tiling` and
 disables the RLE items off the square grid.
 
 ### `src-tauri/src/library/builtin.rs`, `personal.rs`, `library_cmds.rs`
-- Entries carry `tiling`; `begin_place` refuses another grid.
-- The check builds its universe with the pattern's tiling, and compares
-  using `placement`.
-- Personal patterns save with the selection's tiling and offset. Names stay
-  unique across grids.
+- Entries carry `tiling` and `rule`; `begin_place` refuses another grid
+  and gives a notice for another rule.
+- The check builds its universe with the pattern's tiling and rule, and
+  compares using `placement`.
+- Personal patterns save with the selection's tiling and offset and the
+  universe's rule. Names stay unique across grids.
 
 ### `src-tauri/patterns/`
 Move the WP1 files from `pending/` into the folder; remove `pending/`.
 
 ### Tests
-- Pattern text round trip on each grid keeps cells, offset, name and comment.
+- Pattern text round trip on each grid keeps cells, offset, rule, name and
+  comment.
+- A hexagonal pattern made under B3/S23, pasted into a B2/S35 hexagonal
+  universe, starts placing with a notice naming B3/S23.
 - Paste of hexagonal text into a triangular universe is refused naming both
   grids; RLE into a hexagonal universe is refused.
 - Every file in `src-tauri/patterns/` loads and passes its check, the new
@@ -432,13 +481,17 @@ Per Decisions taken › Interaction and display.
 - Zoomed-out shading per Decisions taken.
 
 ### `src/ui/frame.ts`, `backend.ts`, `state.ts`
-`decodeFrame` returns `tiling` from flags bits 8–11 and masks the edges word
-as before. `tilings()` is fetched once at start into state.
+`decodeFrame` returns `tiling` from flags bits 8–11, the edge mode from bit
+0 of word 10, and the rule from bits 1–26 XORed with the grid's default from
+`tilings()`, formatted as `B…/S…`. `tilings()` is fetched once at start into
+state.
 
 ### `src/ui/controls/NewUniverseDialog.tsx`, `StatusBar.tsx`, `Toolbar.tsx`
 - The dialog's Grid select lists `tilings()`, square by default. With
   wrapping edges it shows the even-size requirement next to the sizes and
   disables Create on an odd side.
+- The rule field in the dialog and the toolbar's Rule… control, per
+  Decisions taken › Interaction and display.
 - The status bar per Decisions taken.
 - An edge-mode change refused by the backend shows its message as a notice.
 
@@ -448,14 +501,18 @@ as before. `tilings()` is fetched once at start into state.
   triangle give the right cell; the cells covered by a world rectangle
   include every cell whose center lies inside it.
 - A stroke across a hexagonal grid sends a connected run of cells.
-- `decodeFrame` reads the tiling code; the existing fixtures decode as square.
+- `decodeFrame` reads the tiling code and the rule; the existing fixtures
+  decode as square B3/S23.
 - The dialog refuses odd sides with wrapping for hexagonal and triangular
-  grids, and sends `new_universe` with the chosen tiling.
+  grids, resets the rule to the grid's default when the grid changes, and
+  sends `new_universe` with the chosen tiling and rule.
+- The Rule… control sends `set_rule`, and a refused rule shows the backend's
+  message without closing.
 
 ### Human gate — look and speed on macOS
 Needs WP2 and WP4. The session builds with `npm run tauri build --
---no-bundle`. For each of `1`, `hexagonal`, `triangular-12` and
-`triangular-3`, the person runs `GLIFE_BENCH=<value>
+--no-bundle`. For each of `1`, `square:B36/S23`, `hexagonal`, `triangular-12`
+and `triangular-3`, the person runs `GLIFE_BENCH=<value>
 target/release/glife-app`, presses F to fit, opens the overlay with backquote,
 and records fps and gen/s in Plain and in Age with the trail at 100.
 
@@ -464,6 +521,8 @@ Then by eye, yes or no, on each new grid at a zoom of 20+ px per cell:
 - Clicking draws the cell under the pointer, near edges and corners too.
 - A known oscillator from WP1, drawn by hand, oscillates.
 - Zooming out to fit shows dense and sparse regions as on the square grid.
+- Changing the rule from the toolbar while the universe runs shows the new
+  rule in the status bar, and the cells keep running under it.
 
 The gate passes at 60 fps and at least 30 gen/s in every row and a yes on
 every check.
@@ -481,6 +540,8 @@ every check.
 - Both lists show the current universe's grid. A line under each list gives
   the count for other grids; a switch shows them, marked with their grid
   name, with Place disabled.
+- Each entry shows its rule; one under a rule other than the universe's is
+  marked and can be placed.
 - Previews draw hexagons and triangles as SVG paths through `geometry.ts`.
 
 ### `src/ui/controls/`
@@ -493,6 +554,8 @@ every check.
   draws at the returned offset.
 - Library entries of another grid are hidden until the switch is on, and then
   cannot be placed.
+- An entry under another rule of the same grid is marked and starts placing
+  with the backend's notice.
 - A paste refused for another grid shows the message and does not start
   placing.
 
@@ -510,18 +573,23 @@ On a hexagonal and a 12-neighbor triangular universe, yes or no:
   message naming both grids.
 - A personal pattern saved on each grid appears only on its own grid until
   the switch is on.
+- With the hexagonal universe switched to B3/S23, the built-in B2/S35
+  patterns are marked with their rule and still place.
 
 ## WP8 — Docs and rules
 > `agent: kit:docs-writer` · `model: sonnet` · `gate: human`
 
 Proposes; the session applies after approval.
 
-- `docs/architecture.md`: purpose (four grids), the tiling in the data model
-  and snapshot, frame flags bits 8–11, the placement buffer, the glife file and
-  pattern file `tiling` values and `offset`, pattern text, the `tilings`
-  command, the geometry module, Not built yet.
-- `docs/adr.md`: new entries for grid coordinates and even-side wrapping; one
-  rule per grid with the square step kept and a generic step for the rest;
+- `docs/architecture.md`: purpose (four grids, a rule per universe), the
+  tiling and rule in the data model and snapshot, frame flags bits 8–11 and
+  the rule in word 10, the placement buffer, the glife file and pattern file
+  `tiling` values, `rule` and `offset`, pattern text, the `tilings` and
+  `set_rule` commands, the geometry module, Not built yet.
+- `docs/adr.md`: new entries for grid coordinates and even-side wrapping; a
+  rule per universe with a default and presets per grid, the square B3/S23
+  step kept and a generic step for everything else; the rule in frame word 10
+  relative to the grid's default;
   pattern offset, alignment and true-mirror flips; pattern text as the
   exchange format off the square grid.
 - `docs/roadmap.md`: Phase 3 to Done; Risks and known costs as measured.
@@ -539,14 +607,15 @@ Proposes; the session applies after approval.
   plain and age coloring.
 - The WP6 and WP7 visual checks pass on macOS.
 - A universe of each new grid, saved, closed, reopened and run 100
-  generations, matches a run of the original.
+  generations, matches a run of the original, under its default rule and
+  under another preset.
 - Phase 2 universes and personal patterns open unchanged.
 - Windows and Linux stay unchecked, as in Phases 1 and 2.
 
 ## Deliberately out of scope
 
 - Golly and LifeViewer exchange for non-square grids (`H` and `L` rules).
-- Rule editing; per-universe rules.
+- Rule families beyond birth/survival counts (Phase 6); birth on 0.
 - Rotation; hexagonal orientation other than pointy-top; rhombus-shaped
   universes.
 - Converting a universe or pattern between grids.

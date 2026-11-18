@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-12"
+offset = 1
+name = "Spinner"
+category = "oscillator"
+description = "Six triangles that grow to ten, shrink to eight and come back every 3 generations."
+period = 3
+rle = """
+#N Spinner
+x = 3, y = 2, rule = B456/S45
+3o$3o!
+"""

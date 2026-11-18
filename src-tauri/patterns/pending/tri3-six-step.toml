@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-3"
+offset = 0
+name = "Six step"
+category = "oscillator"
+description = "Seven triangles that keep their shape every generation and change only their orientation, back at the start after 6."
+period = 6
+rle = """
+#N Six step
+x = 5, y = 3, rule = B2/S013
+o$b2obo$ob2o!
+"""

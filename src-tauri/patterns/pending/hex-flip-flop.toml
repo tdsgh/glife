@@ -1,0 +1,12 @@
+format = 1
+tiling = "hexagonal"
+offset = 0
+name = "Flip-flop"
+category = "oscillator"
+description = "Two touching cells that give way to the two cells touching both of them, and back. The commonest object under this rule."
+period = 2
+rle = """
+#N Flip-flop
+x = 2, y = 1, rule = B2/S35
+2o!
+"""

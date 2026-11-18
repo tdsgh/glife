@@ -1,0 +1,11 @@
+format = 1
+tiling = "triangular-3"
+offset = 1
+name = "Chevron"
+category = "still-life"
+description = "Three upward triangles that meet only at their corners."
+rle = """
+#N Chevron
+x = 3, y = 2, rule = B2/S013
+bo$obo!
+"""

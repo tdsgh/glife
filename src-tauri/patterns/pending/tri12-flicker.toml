@@ -1,0 +1,12 @@
+format = 1
+tiling = "triangular-12"
+offset = 1
+name = "Flicker"
+category = "oscillator"
+description = "Five triangles that flip between two shapes: the commonest oscillator under this rule."
+period = 2
+rle = """
+#N Flicker
+x = 3, y = 3, rule = B456/S45
+bo$2o$obo!
+"""

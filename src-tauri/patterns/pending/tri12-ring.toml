@@ -1,0 +1,11 @@
+format = 1
+tiling = "triangular-12"
+offset = 0
+name = "Ten ring"
+category = "still-life"
+description = "Ten triangles in a ring around a hole of two."
+rle = """
+#N Ten ring
+x = 3, y = 4, rule = B456/S45
+3o$obo$obo$3o!
+"""

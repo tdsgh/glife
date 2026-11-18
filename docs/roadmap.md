@@ -82,7 +82,9 @@ The same experience on grids whose cells are not squares.
   the triangular grid with either 12 or 3 neighbors. Each grid has its own
   neighborhood and a default rule suited to it. Every tool from Phases 1–2
   works on these grids: drawing, selection, the pattern library, saving and
-  opening.
+  opening. On every grid, square included, the operator chooses a universe's
+  Life-like birth/survival rule from presets or types it, and changes it while
+  the universe runs.
 - **Out.** Aperiodic tilings such as Penrose (see Open questions).
 - **Constraint.** Plain RLE describes square grids; Golly and LifeViewer write
   hexagonal and triangular patterns as RLE with a rule suffix on an emulated
@@ -120,17 +122,17 @@ Life in a bounded cubic 3D grid.
 
 ### Phase 6 — Other rulesets
 
-Opening rule choice to the operator, and rule families beyond plain
-birth/survival counts.
+Rule families beyond plain birth/survival counts.
 
-- **In.** A rule editor for Life-like birth/survival rules on every geometry,
-  with presets (HighLife, Seeds, Day & Night and others). Multi-state
-  "Generations" rules, where dying cells fade through extra states, each state
-  with its own color. Changing the rule of a universe while it runs.
+- **In.** Multi-state "Generations" rules, where dying cells fade through
+  extra states, each state with its own color, chosen and changed the way
+  Phase 3 chooses and changes birth/survival rules. Birth/survival rule
+  choice on the geometries of Phases 4 and 5 where those phases leave it
+  fixed.
 - **Candidate.** Larger than Life: neighborhoods with a radius greater than one,
   on the square grid.
-- **Note.** Phases 3 to 5 already need a rule per geometry. This phase makes
-  that rule editable and adds the new families.
+- **Note.** Phase 3 makes Life-like birth/survival rules choosable, with
+  presets, on the flat grids. This phase adds the new families.
 
 ### Phase 7 — Infinite universe
 
