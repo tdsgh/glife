@@ -8,18 +8,18 @@ Phase 1 is built and verified on macOS. Everything below links to the code
 as it stands at commit `82f1334`:
 
 - The engine stores alive cells bit-packed, and has no attribute layers yet
-  ([lib.rs:48-55](../src/engine/src/lib.rs)). → ADR-006
+  ([lib.rs:48-55](../../src/engine/src/lib.rs)). → ADR-006
 - One simulation thread owns the universe. It publishes a full `Universe` clone
   as a snapshot after each command, and at most every 8 ms while running
-  ([sim.rs:182-196](../src-tauri/src/sim.rs)). → ADR-007
+  ([sim.rs:182-196](../../src-tauri/src/sim.rs)). → ADR-007
 - The UI pulls the region in view once per animation frame as frame layout v1.
   The frame has only the alive-bits layer kind, and readers skip unknown kinds
-  ([frame.ts:49-55](../src/ui/frame.ts)). → ADR-008
+  ([frame.ts:49-55](../../src/ui/frame.ts)). → ADR-008
 - Commands are JSON `invoke` calls that return nothing except `frame`
-  ([backend.ts:15-30](../src/ui/backend.ts) ↔
-  [commands.rs](../src-tauri/src/commands.rs)).
+  ([backend.ts:15-30](../../src/ui/backend.ts) ↔
+  [commands.rs](../../src-tauri/src/commands.rs)).
 - The app has no plugins, menus, file access or clipboard. Its capabilities are
-  `core:default` ([default.json](../src-tauri/capabilities/default.json)).
+  `core:default` ([default.json](../../src-tauri/capabilities/default.json)).
 
 The stage's main risk is age coloring at 2048 × 2048: the extra layers in each
 snapshot copy, in each step and on the wire. WP1–WP3 build that path and measure

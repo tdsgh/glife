@@ -25,9 +25,9 @@ operator draw, run, step, zoom and pan it.
 ## Requirements
 
 What the first phase must do and its targets are in
-[glife-phase-1.md](glife-phase-1.md); repo-wide requirements are in
+[glife-phase-1.md](hist/glife-phase-1.md); repo-wide requirements are in
 [roadmap.md](roadmap.md#cross-cutting-requirements). What stage 2 builds is in
-[glife-phase-2.md](glife-phase-2.md).
+[glife-phase-2.md](hist/glife-phase-2.md).
 
 - A universe side is 3 to 2048 cells
   ([lib.rs:23-25](../src/engine/src/lib.rs)).
