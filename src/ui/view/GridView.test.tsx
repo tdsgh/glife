@@ -18,6 +18,10 @@ vi.mock("three", () => {
   }
   class Renderer {
     domElement = document.createElement("canvas");
+    debug: { onShaderError?: (...a: unknown[]) => void } = {};
+    constructor() {
+      (globalThis as { __renderer?: Renderer }).__renderer = this;
+    }
     setPixelRatio() {}
     getPixelRatio = () => 1;
     setSize() {}
@@ -54,12 +58,17 @@ import { GridView } from "./GridView";
 
 let calls: { layers: number; since: number }[];
 let edits: { cmd: string; args: unknown }[];
+let tilingCode = 0;
+let reportMode = false;
 beforeEach(() => {
+  reportMode = false;
   calls = [];
   edits = [];
+  tilingCode = 0;
   resetUiState();
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   mockIPC((cmd, args) => {
+    if (cmd === "bench_report_mode") return reportMode;
     if (cmd !== "frame") {
       edits.push({ cmd, args });
       return;
@@ -67,7 +76,7 @@ beforeEach(() => {
     const a = args as { x0: number; y0: number; w: number; h: number; since: number; layers: number };
     calls.push({ layers: a.layers, since: a.since });
     // Echo the requested region with its alive layer, and the byte layers asked for.
-    const words = [1, 0, 3, 0, 0, 0, 0, 0, 64, 64, 0, a.x0, a.y0, a.w, a.h, 1 + (a.layers & 1) + ((a.layers >> 1) & 1)];
+    const words = [1, tilingCode << 8, 3, 0, 0, 0, 0, 0, 64, 64, 0, a.x0, a.y0, a.w, a.h, 1 + (a.layers & 1) + ((a.layers >> 1) & 1)];
     words.push(0, (a.w / 32) * a.h, ...new Array((a.w / 32) * a.h).fill(0));
     if (a.layers & 1) words.push(1, (a.w / 4) * a.h, ...new Array((a.w / 4) * a.h).fill(0));
     if (a.layers & 2) words.push(2, (a.w / 4) * a.h, ...new Array((a.w / 4) * a.h).fill(0));
@@ -147,4 +156,58 @@ test("a select drag makes a selection and shows its size", async () => {
   expect(getState().edit.selection).toEqual({ x: 2, y: 0, w: 7, h: 4 });
   expect(edits.filter((e) => e.cmd === "edit")).toEqual([]);
   await waitFor(() => expect(getByTestId("selection-label").textContent).toBe("7 × 4"));
+});
+
+test("on a hexagonal grid a click draws the cell whose hexagon is under the pointer, near edges too", async () => {
+  tilingCode = 1;
+  setupPointer();
+  const { container } = render(<GridView />);
+  const host = container.firstElementChild!;
+  await waitFor(() => expect(calls.length).toBeGreaterThan(1));
+  // 640 px window over a 64 x 64 hexagonal grid: fitted view, so screen = (world - center) * ppc + 320.
+  const { fit } = await import("./viewport");
+  const { cellCenter, ROW } = await import("./geometry");
+  const v = fit(640, 640, 64, 64, "hexagonal");
+  const screenOf = (wx: number, wy: number) => ({ clientX: (wx - v.centerX) * v.pxPerCell + 320, clientY: (wy - v.centerY) * v.pxPerCell + 320 });
+  const drawn = () => edits.filter((e) => e.cmd === "edit").map((e) => (e.args as { cells: number[][] }).cells[0]);
+  // The center of an odd-row cell, then a point just inside its lower-right slanted edge.
+  const [cx, cy] = cellCenter("hexagonal", 5, 3);
+  fireEvent.pointerDown(host, { button: 0, ...screenOf(cx, cy) });
+  fireEvent.pointerUp(host);
+  fireEvent.pointerDown(host, { button: 0, ...screenOf(cx + 0.25 - 0.05, cy + ROW / 2 - 0.05) });
+  fireEvent.pointerUp(host);
+  // And one just past that edge, which is the cell below-right.
+  fireEvent.pointerDown(host, { button: 0, ...screenOf(cx + 0.25 - 0.05, cy + ROW / 2 + 0.05) });
+  fireEvent.pointerUp(host);
+  expect(drawn()).toEqual([[5, 3], [5, 3], [6, 4]]);
+});
+
+test("outside report mode the view never reports", async () => {
+  render(<GridView />);
+  await waitFor(() => expect(calls.length).toBeGreaterThan(2));
+  (globalThis as { __renderer?: { debug: { onShaderError?: (...a: unknown[]) => void } } }).__renderer!.debug.onShaderError!(
+    { getProgramInfoLog: () => "boom", getShaderInfoLog: () => "" },
+    {},
+    {},
+    {},
+  );
+  await new Promise((r) => setTimeout(r, 200));
+  expect(edits.some((e) => e.cmd === "bench_report")).toBe(false);
+  expect(getState().settings.coloring).toBe("plain");
+});
+
+test("in report mode a shader failure is reported as an error, not ok", async () => {
+  reportMode = true;
+  render(<GridView />);
+  await waitFor(() => expect(calls.length).toBeGreaterThan(2));
+  (globalThis as { __renderer?: { debug: { onShaderError?: (...a: unknown[]) => void } } }).__renderer!.debug.onShaderError!(
+    { getProgramInfoLog: () => "link failed", getShaderInfoLog: () => "" },
+    {},
+    {},
+    {},
+  );
+  await waitFor(() => expect(edits.some((e) => e.cmd === "bench_report")).toBe(true));
+  const report = edits.find((e) => e.cmd === "bench_report")!.args as { line: string; ok: boolean };
+  expect(report.ok).toBe(false);
+  expect(JSON.parse(report.line)).toEqual({ error: "link failed" });
 });

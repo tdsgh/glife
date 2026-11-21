@@ -10,7 +10,7 @@ import { previewPath } from "./PatternPreview";
 const header = (over: Partial<FrameHeader> = {}): FrameHeader => ({
   version: 1, playing: false, snapshotVersion: 1, generation: 0, liveCount: 0, gensPerSec: 0,
   gridWidth: 100, gridHeight: 50, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0,
-  canUndo: false, canRedo: false, dirty: false, ...over,
+  canUndo: false, canRedo: false, dirty: false, tiling: "square", rule: "B3/S23", ...over,
 });
 
 const stats = { live: 5, created: "2026-01-02T03:04:05Z", changed: "2026-02-03T04:05:06Z" };

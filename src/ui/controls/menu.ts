@@ -68,10 +68,11 @@ export function useMenu() {
   const canUndo = header?.canUndo ?? false;
   const canRedo = header?.canRedo ?? false;
   const playing = header?.playing ?? false;
+  const tiling = header?.tiling;
   const hasSelection = edit.selection !== null;
   useEffect(() => {
-    void report(() => backend.setMenuState({ canUndo, canRedo, hasSelection, playing }));
-  }, [canUndo, canRedo, hasSelection, playing]);
+    void report(() => backend.setMenuState({ canUndo, canRedo, hasSelection, playing, tiling }));
+  }, [canUndo, canRedo, hasSelection, playing, tiling]);
 }
 
 /** `<file name> — glife`, prefixed with a bullet while there are unsaved changes. */

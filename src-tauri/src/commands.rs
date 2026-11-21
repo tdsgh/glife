@@ -193,6 +193,27 @@ pub struct TilingInfo {
     pub wrap_even_height: bool,
 }
 
+/// Managed state: whether the process runs as a benchmark report (`GLIFE_BENCH_REPORT=1`).
+pub struct BenchReportMode(pub bool);
+
+#[tauri::command]
+pub fn bench_report_mode(mode: State<BenchReportMode>) -> bool {
+    mode.0
+}
+
+/// Prints the report line on stdout and exits: code 0 when `ok`, 1 otherwise. Does nothing outside report mode.
+#[tauri::command]
+pub fn bench_report(mode: State<BenchReportMode>, line: String, ok: bool) {
+    if !mode.0 {
+        return;
+    }
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "GLIFE_BENCH_REPORT {}", line.replace(['\r', '\n'], " "));
+    let _ = out.flush();
+    std::process::exit(if ok { 0 } else { 1 });
+}
+
 /// Every grid, with its default rule and presets.
 #[tauri::command]
 pub fn tilings() -> Vec<TilingInfo> {

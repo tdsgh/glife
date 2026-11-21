@@ -1,3 +1,19 @@
+import type { TilingId, TilingInfo } from "./backend";
+
+/** Grid ids by the code in flags bits 8-11. */
+const TILING_IDS: TilingId[] = ["square", "hexagonal", "triangular-12", "triangular-3"];
+
+/** `B…/S…` as the engine writes it: one digit per count, or commas when a count is 10 or more. */
+export function formatRule(birth: number, survival: number): string {
+  const commas = ((birth | survival) >> 10) !== 0;
+  const counts = (mask: number) => {
+    const numbers = Array.from({ length: 16 }, (_, n) => n).filter((n) => (mask >> n) & 1);
+    if (numbers.length === 1 && numbers[0] >= 10) return `${numbers[0]},`;
+    return numbers.join(commas ? "," : "");
+  };
+  return `B${counts(birth)}/S${counts(survival)}`;
+}
+
 export interface FrameHeader {
   version: number;
   playing: boolean;
@@ -8,6 +24,9 @@ export interface FrameHeader {
   gridWidth: number;
   gridHeight: number;
   edges: "wrap" | "dead";
+  tiling: TilingId;
+  /** `B…/S…`; empty when the grids' defaults (`tilings()`) were not available to decode it. */
+  rule: string;
   x0: number;
   y0: number;
   w: number;
@@ -33,10 +52,13 @@ const KIND_ALIVE = 0;
 const KIND_AGE = 1;
 const KIND_TRAIL = 2;
 
-export function decodeFrame(buffer: ArrayBuffer): Frame {
+/** `tilings` supplies each grid's default rule, which the header's rule masks are XORed with. */
+export function decodeFrame(buffer: ArrayBuffer, tilings: readonly TilingInfo[] = []): Frame {
   const words = new Uint32Array(buffer);
   const f32 = new Float32Array(buffer);
   const u64 = (lo: number, hi: number) => lo + hi * 2 ** 32;
+  const tiling = TILING_IDS[(words[1] >> 8) & 0xf] ?? "square";
+  const base = tilings.find((t) => t.id === tiling)?.defaultRule;
   const header: FrameHeader = {
     version: words[0],
     playing: (words[1] & 1) === 1,
@@ -46,7 +68,9 @@ export function decodeFrame(buffer: ArrayBuffer): Frame {
     gensPerSec: f32[7],
     gridWidth: words[8],
     gridHeight: words[9],
-    edges: words[10] === 0 ? "wrap" : "dead",
+    edges: (words[10] & 1) === 0 ? "wrap" : "dead",
+    tiling,
+    rule: base ? formatRule(((words[10] >> 1) & 0x1fff) ^ base.birth, ((words[10] >> 14) & 0x1fff) ^ base.survival) : "",
     x0: words[11],
     y0: words[12],
     w: words[13],

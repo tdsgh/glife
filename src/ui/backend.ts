@@ -33,6 +33,10 @@ export interface TilingInfo {
 }
 
 /** Every grid with its default rule and presets. */
+/** True when the process was started with `GLIFE_BENCH_REPORT=1`. */
+export const benchReportMode = () => invoke<boolean>("bench_report_mode");
+/** Prints `GLIFE_BENCH_REPORT <line>` on stdout and exits the process: code 0 when `ok`, else 1. */
+export const benchReport = (line: string, ok: boolean) => invoke<void>("bench_report", { line, ok });
 export const tilings = () => invoke<TilingInfo[]>("tilings");
 /** `tiling` defaults to square and `rule` to the grid's default; rejects with a message when the size does not allow wrapping or the grid cannot run the rule. */
 export const newUniverse = (width: number, height: number, edges: Edges, tiling?: TilingId, rule?: string) =>

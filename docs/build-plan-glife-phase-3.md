@@ -236,16 +236,16 @@ every grid, square included.
 
 ## Step routing at a glance
 
-| Step | Agent | Model | Gate | Parallel |
-|---|---|---|---|---|
-| WP1 Rules and patterns research | `general-purpose` | opus | human | — |
-| WP2 Engine grids and steps | `engine` | opus | test | — |
-| WP3 Engine patterns on grids | `engine` | opus | test | — |
-| WP4 Grid commands and frame | `host` | sonnet | test | yes, with WP6 |
-| WP5 Formats, clipboard and libraries | `host` | sonnet | test | yes, with WP6 |
-| WP6 Grid view and drawing | `ui` | sonnet | human | yes, with WP4–WP5 |
-| WP7 Placing, selection and libraries in the UI | `ui` | sonnet | human | — |
-| WP8 Docs and rules | `kit:docs-writer` | sonnet | human | — |
+| Step | Agent | Model | Gate | Parallel | Status |
+|---|---|---|---|---|---|
+| WP1 Rules and patterns research | `general-purpose` | opus | human | — | Done `d13efc8` |
+| WP2 Engine grids and steps | `engine` | opus | test | — | Done `fb07f27` |
+| WP3 Engine patterns on grids | `engine` | opus | test | — | Done `6d5e65e` |
+| WP4 Grid commands and frame | `host` | sonnet | test | yes, with WP6 | Done `0d11743` |
+| WP5 Formats, clipboard and libraries | `host` | sonnet | test | yes, with WP6 | Done `d211e5b` |
+| WP6 Grid view and drawing | `ui` | sonnet | human | yes, with WP4–WP5 | Done |
+| WP7 Placing, selection and libraries in the UI | `ui` | sonnet | human | — | Next |
+| WP8 Docs and rules | `kit:docs-writer` | sonnet | human | — | Not started |
 
 Test command for every `test` gate: `cargo test --workspace && npm test`.
 
@@ -518,9 +518,9 @@ state.
 ### Human gate — look and speed on macOS
 Needs WP2 and WP4. The session builds with `npm run tauri build --
 --no-bundle`. For each of `1`, `square:B36/S23`, `hexagonal`, `triangular-12`
-and `triangular-3`, the person runs `GLIFE_BENCH=<value>
-target/release/glife-app`, presses F to fit, opens the overlay with backquote,
-and records fps and gen/s in Plain and in Age with the trail at 100.
+and `triangular-3`, the session runs `GLIFE_BENCH=<value> GLIFE_BENCH_REPORT=1
+target/release/glife-app`, which fits, measures fps and gen/s in Plain and in
+Age with the trail at 100, prints one line and quits.
 
 Then by eye, yes or no, on each new grid at a zoom of 20+ px per cell:
 - Cells have the right shape, and grid lines follow their edges.
@@ -553,7 +553,7 @@ every check.
 ### `src/ui/controls/`
 - File actions Import Pattern… and Export Pattern…; Export uses the
   selection if any, else the universe, as Export RLE does.
-- `menu.ts` sends `tiling` with `set_menu_state` and routes the new items.
+- `menu.ts` routes the new items.
 
 ### Tests
 - The preview requests `pending_cells` once per parity and flip state, and
@@ -603,7 +603,9 @@ Proposes; the session applies after approval.
 - `docs/roadmap.md`: Phase 3 to Done; Risks and known costs as measured.
 - Root `CLAUDE.md` § Cross-cutting rules: add `fixtures/universe-hex-v1.glife`
   to the files kept loading. Command index: the benchmark row gains
-  `GLIFE_BENCH=<tiling id>[:<rule>]` and its `main.rs` link is corrected.
+  `GLIFE_BENCH=<tiling id>[:<rule>]` and its `main.rs` link is corrected; a
+  row for `GLIFE_BENCH_REPORT=1`, which prints fps and gen/s and quits.
+- `docs/architecture.md` also: the bench report mode.
 - `.claude/agents/engine.md`: the rule "Keep both layers out of the B3/S23
   step" names every grid's step.
 - Move `glife-phase-3.md` and this plan to `docs/hist/` once Phase 3 is Done,

@@ -39,6 +39,18 @@ fn main() {
         eprintln!("{e}");
         std::process::exit(2);
     });
+    let report = sim::parse_bench_report(std::env::var("GLIFE_BENCH_REPORT").ok().as_deref(), bench.is_some())
+        .unwrap_or_else(|e| {
+            eprintln!("{e}");
+            std::process::exit(2);
+        });
+    if report {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(45));
+            println!("GLIFE_BENCH_REPORT {{\"error\":\"timeout\"}}");
+            std::process::exit(1);
+        });
+    }
     let sim = sim::Sim::launch(bench);
     let (queue, receiver) = mpsc::channel();
     let latest = sim.latest();
@@ -56,6 +68,12 @@ fn main() {
             eprintln!("built-in patterns: {}", builtin.as_deref().map_or("not found".into(), |p| p.display().to_string()));
             let personal = app.path().app_data_dir()?.join("patterns");
             app.manage(commands::Host::new(queue, latest, builtin.as_deref(), &personal)?);
+            app.manage(commands::BenchReportMode(report));
+            if report {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_size(tauri::LogicalSize::new(1280.0, 800.0))?;
+                }
+            }
             app.set_menu(menu::build(app.handle())?)?;
             Ok(())
         })
@@ -69,6 +87,8 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::bench_report_mode,
+            commands::bench_report,
             commands::tilings,
             commands::new_universe,
             commands::play,

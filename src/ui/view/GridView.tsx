@@ -1,15 +1,19 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { edit, fetchFrame, NO_VERSION, type Region } from "../backend";
+import { benchReportMode, edit, fetchFrame, NO_VERSION, play, type Region } from "../backend";
 import { dispatch } from "../controls/actions";
 import { isTextField } from "../controls/shortcuts";
 import * as tools from "../edit/tools";
-import { getState, onFit, setHeader, wantedLayers } from "../state";
+import { getState, onFit, requestFit, setHeader, setSettings, wantedLayers } from "../state";
 import { paletteColors } from "../color/palettes";
 import { decodeFrame, type FrameHeader } from "../frame";
 import { fragmentShader, vertexShader } from "./gridShader";
-import { startStroke, strokeMode, type Cell } from "../edit/stroke";
-import { fit, panBy, resize, screenToCell, visibleRegion, zoomAt, type Viewport } from "./viewport";
+import { startStroke, strokeMode, worldWalk, type Cell } from "../edit/stroke";
+import { runBench } from "./bench";
+import { cellCenter, pitch, worldToCell } from "./geometry";
+import { fit, panBy, resize, screenToWorld, visibleRegion, zoomAt, type Viewport } from "./viewport";
+
+const TILING_CODES = { square: 0, hexagonal: 1, "triangular-12": 2, "triangular-3": 3 };
 
 const PROBE: Region = { x0: 0, y0: 0, w: 32, h: 1 };
 
@@ -28,6 +32,13 @@ export function GridView() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setPixelRatio(window.devicePixelRatio);
+    // Compile and link errors are only logged by three.js; keep the text for the benchmark report.
+    let shaderFailure: string | null = null;
+    renderer.debug.onShaderError = (gl, program, vs, fs) => {
+      shaderFailure =
+        [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vs), gl.getShaderInfoLog(fs)].filter(Boolean).join(" ").trim() ||
+        "shader failed to compile or link";
+    };
     host.appendChild(renderer.domElement);
     renderer.domElement.style.display = "block";
 
@@ -73,6 +84,8 @@ export function GridView() {
         uRegion: { value: new THREE.Vector4(0, 0, 0, 0) },
         uGrid: { value: new THREE.Vector2(1, 1) },
         uCenter: { value: new THREE.Vector2(0, 0) },
+        uTiling: { value: 0 },
+        uPitch: { value: new THREE.Vector2(1, 1) },
         uWin: { value: new THREE.Vector2(1, 1) },
         uPpc: { value: 1 },
         uMode: { value: 0 },
@@ -122,6 +135,7 @@ export function GridView() {
     let frameBytes = 0;
     let frames = 0;
     let fps = 0;
+    let drawn = 0;
     let lastFpsAt = performance.now();
 
     const applySize = () => {
@@ -141,14 +155,14 @@ export function GridView() {
           if (disposed) return;
           reqMs = performance.now() - t0;
           frameBytes = buf.byteLength;
-          const frame = decodeFrame(buf);
+          const frame = decodeFrame(buf, getState().tilings);
           const h = frame.header;
           header = h;
           setHeader(h);
-          const key = `${h.gridWidth}x${h.gridHeight}`;
+          const key = `${h.tiling}/${h.gridWidth}x${h.gridHeight}`;
           if (key !== gridKey) {
             gridKey = key;
-            view = fit(size.width, size.height, h.gridWidth, h.gridHeight);
+            view = fit(size.width, size.height, h.gridWidth, h.gridHeight, h.tiling);
             dispatch(tools.reset(getState().edit));
             uploaded = null;
             since = NO_VERSION;
@@ -211,6 +225,8 @@ export function GridView() {
         const u = material.uniforms;
         u.uGrid.value.set(view.gridW, view.gridH);
         u.uCenter.value.set(view.centerX, view.centerY);
+        u.uTiling.value = TILING_CODES[view.tiling];
+        u.uPitch.value.set(...pitch(view.tiling));
         u.uWin.value.set(size.width * dpr, size.height * dpr);
         u.uPpc.value = view.pxPerCell * dpr;
         const { settings } = getState();
@@ -250,17 +266,47 @@ export function GridView() {
           u.uSel.value.set(selection.x, selection.y, selection.w, selection.h);
           label.style.display = "block";
           label.textContent = `${selection.w} × ${selection.h}`;
-          const lx = (selection.x - view.centerX) * view.pxPerCell + view.width / 2;
-          const ly = (selection.y - view.centerY) * view.pxPerCell + view.height / 2;
-          label.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly > 24 ? ly - 22 : ly + selection.h * view.pxPerCell + 4)}px)`;
+          // Top-left of the selection's first cell, in world units.
+          const [cx, cy] = cellCenter(view.tiling, selection.x, selection.y);
+          const [, rowPitch] = pitch(view.tiling);
+          const lx = (cx - 0.5 - view.centerX) * view.pxPerCell + view.width / 2;
+          const ly = (cy - rowPitch / 2 - view.centerY) * view.pxPerCell + view.height / 2;
+          label.style.transform = `translate(${Math.round(lx)}px, ${Math.round(ly > 24 ? ly - 22 : ly + selection.h * rowPitch * view.pxPerCell + 4)}px)`;
         } else {
           label.style.display = "none";
         }
         renderer.render(scene, camera);
+        drawn++;
       }
       updateOverlay(now);
     };
     raf = requestAnimationFrame(loop);
+
+    benchReportMode()
+      .then((on) => {
+        if (!on || disposed) return;
+        void runBench({
+          now: () => performance.now(),
+          sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+          frames: () => drawn,
+          generation: () => getState().header?.generation ?? null,
+          playing: () => getState().header?.playing ?? false,
+          ready: () => drawn > 0 && view !== null,
+          failure: () => shaderFailure,
+          fit: requestFit,
+          play,
+          setLook: (look) =>
+            setSettings(look === "age" ? { coloring: "age", trail: true, trailLength: 100 } : { coloring: "plain", trail: false }, false),
+          info: () => ({
+            tiling: header?.tiling ?? "",
+            rule: header?.rule ?? "",
+            width: header?.gridWidth ?? 0,
+            height: header?.gridHeight ?? 0,
+            dpr: renderer.getPixelRatio(),
+          }),
+        });
+      })
+      .catch(() => {});
 
     const ro = new ResizeObserver(() => {
       size = { width: host.clientWidth || 1, height: host.clientHeight || 1 };
@@ -285,12 +331,16 @@ export function GridView() {
       }
     };
 
+    // World point under the pointer.
+    const worldAt = (e: { clientX: number; clientY: number }): Cell => {
+      const p = local(e);
+      const w = screenToWorld(view!, p.x, p.y);
+      return [w.x, w.y];
+    };
+    const toCell = ([wx, wy]: Cell): Cell => worldToCell(view!.tiling, wx, wy);
     const cellAt = (e: { clientX: number; clientY: number }): Cell | null => {
       if (!view) return null;
-      const p = local(e);
-      const c = screenToCell(view, p.x, p.y);
-      const x = Math.floor(c.x);
-      const y = Math.floor(c.y);
+      const [x, y] = toCell(worldAt(e));
       return x >= 0 && y >= 0 && x < view.gridW && y < view.gridH ? [x, y] : null;
     };
     const isAlive = ([x, y]: Cell) => {
@@ -310,21 +360,18 @@ export function GridView() {
     let stroke: ((points: Cell[]) => void) | null = null;
     const grid = (): tools.Grid => ({ w: view!.gridW, h: view!.gridH });
     // Unclamped cell under the pointer, for the select drag and for placing.
-    const rawCell = (e: { clientX: number; clientY: number }): Cell => {
-      const p = local(e);
-      const c = screenToCell(view!, p.x, p.y);
-      return [Math.floor(c.x), Math.floor(c.y)];
-    };
+    const rawCell = (e: { clientX: number; clientY: number }): Cell => toCell(worldAt(e));
     const onPointerDown = (e: PointerEvent) => {
       if (e.button === 0 && !spaceHeld) {
         if (!view) return;
-        const c = rawCell(e);
+        const w = worldAt(e);
+        const c = toCell(w);
         const r = tools.pointerDown(getState().edit, c, grid());
         dispatch(r);
         const begun = r.effects.find((f) => f.kind === "stroke");
         if (begun) {
           const id = begun.id;
-          stroke = startStroke(c, strokeMode(isAlive(c)), (cells, alive) => sendEdit(cells, alive, id));
+          stroke = startStroke(w, strokeMode(isAlive(c)), (cells, alive) => sendEdit(cells, alive, id), worldWalk(toCell));
         }
         if (begun || getState().edit.dragging) host.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -345,12 +392,7 @@ export function GridView() {
       if (stroke && view) {
         // Unclamped points: cells outside the grid are filtered at send time.
         const events = e.getCoalescedEvents?.() ?? [];
-        const points = (events.length ? events : [e]).map((ev): Cell => {
-          const p = local(ev);
-          const c = screenToCell(view!, p.x, p.y);
-          return [Math.floor(c.x), Math.floor(c.y)];
-        });
-        stroke(points);
+        stroke((events.length ? events : [e]).map(worldAt));
         return;
       }
       if (!drag || !view) return;
@@ -382,7 +424,7 @@ export function GridView() {
     };
 
     const offFit = onFit(() => {
-      if (view) view = fit(size.width, size.height, view.gridW, view.gridH);
+      if (view) view = fit(size.width, size.height, view.gridW, view.gridH, view.tiling);
     });
 
     host.addEventListener("wheel", onWheel, { passive: false });

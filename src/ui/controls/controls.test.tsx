@@ -2,7 +2,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { decodeFrame, type FrameHeader } from "../frame";
-import { onFit, resetUiState, setHeader } from "../state";
+import type { TilingInfo } from "../backend";
+import { getState, onFit, resetUiState, setHeader, setTilings } from "../state";
+import { RuleDialog } from "./RuleDialog";
 import { NewUniverseDialog } from "./NewUniverseDialog";
 import { StatusBar } from "./StatusBar";
 import { Toolbar } from "./Toolbar";
@@ -19,15 +21,27 @@ async function fixture(): Promise<ArrayBuffer> {
 const header = (over: Partial<FrameHeader> = {}): FrameHeader => ({
   version: 1, playing: false, snapshotVersion: 1, generation: 12, liveCount: 34, gensPerSec: 9.6,
   gridWidth: 256, gridHeight: 128, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0,
-  canUndo: false, canRedo: false, dirty: false, ...over,
+  canUndo: false, canRedo: false, dirty: false, tiling: "square", rule: "B3/S23", ...over,
 });
+
+const tiling = (id: TilingInfo["id"], name: string, rule: string, presets: [string, string][], even = false): TilingInfo => ({
+  id, name, neighbors: 8, defaultRule: { text: rule, birth: 0, survival: 0 }, presets: presets.map(([n, r]) => ({ name: n, rule: r })),
+  wrapEvenWidth: even && id !== "hexagonal", wrapEvenHeight: even,
+});
+const TILINGS = [
+  tiling("square", "Square", "B3/S23", [["Life", "B3/S23"], ["HighLife", "B36/S23"]]),
+  tiling("hexagonal", "Hexagonal", "B2/S35", [["Bays", "B2/S35"], ["Hex Life", "B3/S23"]], true),
+  tiling("triangular-12", "Triangular, 12 neighbors", "B456/S45", [["Bays", "B456/S45"]], true),
+];
 
 let calls: { cmd: string; args: unknown }[];
 beforeEach(() => {
   calls = [];
   resetUiState();
+  setTilings(TILINGS);
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
+    if (cmd === "set_rule" && String((args as { rule: string }).rule).includes("9")) throw "a cell on this grid has 8 neighbors, so a rule cannot count 9";
     return cmd === "confirm_discard" ? true : undefined;
   });
 });
@@ -110,7 +124,7 @@ test("new universe dialog creates, then fits", async () => {
   fireEvent.change(screen.getByLabelText("Dialog edges"), { target: { value: "dead" } });
   click("Create");
   await waitFor(() => expect(fit).toHaveBeenCalled());
-  expect(last()).toEqual({ cmd: "new_universe", args: { width: 300, height: 40, edges: "dead" } });
+  expect(last()).toEqual({ cmd: "new_universe", args: { width: 300, height: 40, edges: "dead", tiling: "square", rule: "B3/S23" } });
   expect(screen.queryByRole("dialog")).toBeNull();
   off();
 });
@@ -128,6 +142,103 @@ test("dialog rejects 2 and 2049 and accepts the bounds", () => {
   fireEvent.change(screen.getByLabelText("Height"), { target: { value: "2049" } });
   expect((create as HTMLButtonElement).disabled).toBe(true);
   expect(sent()).toEqual([]);
+});
+
+const grid = (id: string) => fireEvent.change(screen.getByLabelText("Grid"), { target: { value: id } });
+const create = () => screen.getByRole("button", { name: "Create" }) as HTMLButtonElement;
+
+test("the dialog lists the grids, square first, and sends the chosen grid and rule", async () => {
+  render(<NewUniverseDialog onClose={() => {}} />);
+  expect(Array.from((screen.getByLabelText("Grid") as HTMLSelectElement).options).map((o) => o.value)).toEqual(["square", "hexagonal", "triangular-12"]);
+  expect((screen.getByLabelText("Grid") as HTMLSelectElement).value).toBe("square");
+  grid("hexagonal");
+  fireEvent.change(screen.getByLabelText("Height"), { target: { value: "40" } });
+  fireEvent.change(screen.getByLabelText("Rule"), { target: { value: "B34/S3" } });
+  click("Create");
+  await waitFor(() => expect(sent()).toEqual(["new_universe"]));
+  expect(last().args).toEqual({ width: 256, height: 40, edges: "wrap", tiling: "hexagonal", rule: "B34/S3" });
+});
+
+test("wrapping hexagonal and triangular grids refuse an odd side; dead edges allow it", () => {
+  render(<NewUniverseDialog onClose={() => {}} />);
+  grid("hexagonal");
+  expect(screen.getByRole("dialog").textContent).toContain("Wrapping needs an even height");
+  // Hexagonal rows repeat in height only.
+  fireEvent.change(screen.getByLabelText("Width"), { target: { value: "31" } });
+  expect(create().disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText("Height"), { target: { value: "31" } });
+  expect(create().disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Dialog edges"), { target: { value: "dead" } });
+  expect(create().disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText("Dialog edges"), { target: { value: "wrap" } });
+  grid("triangular-12");
+  expect(screen.getByRole("dialog").textContent).toContain("Wrapping needs an even width and height");
+  expect(create().disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Height"), { target: { value: "32" } });
+  expect(create().disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Width"), { target: { value: "32" } });
+  expect(create().disabled).toBe(false);
+  grid("square");
+  fireEvent.change(screen.getByLabelText("Width"), { target: { value: "31" } });
+  expect(create().disabled).toBe(false);
+});
+
+test("changing the grid resets the rule to that grid's default; a preset fills the text box", () => {
+  render(<NewUniverseDialog onClose={() => {}} />);
+  const rule = () => (screen.getByLabelText("Rule") as HTMLInputElement).value;
+  expect(rule()).toBe("B3/S23");
+  fireEvent.change(screen.getByLabelText("Rule preset"), { target: { value: "HighLife" } });
+  expect(rule()).toBe("B36/S23");
+  fireEvent.change(screen.getByLabelText("Rule"), { target: { value: "B1/S1" } });
+  expect((screen.getByLabelText("Rule preset") as HTMLSelectElement).value).toBe("");
+  grid("hexagonal");
+  expect(rule()).toBe("B2/S35");
+  grid("triangular-12");
+  expect(rule()).toBe("B456/S45");
+});
+
+test("a refused new universe shows the message and stays open", async () => {
+  mockIPC((cmd) => {
+    if (cmd === "new_universe") throw "birth on 0 neighbors is not supported";
+  });
+  const onClose = vi.fn();
+  render(<NewUniverseDialog onClose={onClose} />);
+  click("Create");
+  await screen.findByText("birth on 0 neighbors is not supported");
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test("the Rule… control sends set_rule and closes", async () => {
+  render(<Toolbar />);
+  act(() => setHeader(header({ tiling: "hexagonal", rule: "B2/S35" })));
+  click("Rule…");
+  expect((screen.getByLabelText("Rule") as HTMLInputElement).value).toBe("B2/S35");
+  fireEvent.change(screen.getByLabelText("Rule preset"), { target: { value: "Hex Life" } });
+  click("Apply");
+  await waitFor(() => expect(sent()).toEqual(["set_rule"]));
+  expect(last().args).toEqual({ rule: "B3/S23" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("a refused rule shows the backend's message without closing", async () => {
+  const onClose = vi.fn();
+  render(<RuleDialog onClose={onClose} />);
+  act(() => setHeader(header()));
+  fireEvent.change(screen.getByLabelText("Rule"), { target: { value: "B9/S1" } });
+  click("Apply");
+  await screen.findByText("a cell on this grid has 8 neighbors, so a rule cannot count 9");
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Rule"), { target: { value: "B3/S1" } });
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("an edge change refused by the backend shows its message as a notice", async () => {
+  mockIPC((cmd) => {
+    if (cmd === "set_edges") throw "a wrapping hexagonal universe needs an even height";
+  });
+  render(<Toolbar />);
+  click("Edges: Wrap");
+  await waitFor(() => expect(getState().notice).toBe("a wrapping hexagonal universe needs an even height"));
 });
 
 function Keys() {
@@ -174,12 +285,13 @@ test("Cmd+Shift+Z redoes outside text fields", async () => {
 });
 
 test("status bar renders a decoded header", async () => {
-  const f = decodeFrame(await fixture());
-  expect(f.header).toMatchObject({ playing: true, generation: 0, liveCount: 7, gridWidth: 64, gridHeight: 3, edges: "dead" });
+  const f = decodeFrame(await fixture(), [{ ...TILINGS[0], defaultRule: { text: "B3/S23", birth: 0b1000, survival: 0b1100 } }]);
+  expect(f.header).toMatchObject({ playing: true, generation: 0, liveCount: 7, gridWidth: 64, gridHeight: 3, edges: "dead", tiling: "square", rule: "B3/S23" });
   render(<StatusBar />);
   act(() => setHeader(f.header));
   const text = screen.getByRole("status").textContent!;
-  for (const part of ["Generation 0", "Live 7", "13 gen/s", "64 × 3", "Dead", "B3/S23"]) expect(text).toContain(part);
+  for (const part of ["Generation 0", "Live 7", "13 gen/s"]) expect(text).toContain(part);
+  expect(text).toContain("Square · 64 × 3 · Dead · B3/S23");
 });
 
 test("status bar hides gen/s while paused", () => {
@@ -187,7 +299,13 @@ test("status bar hides gen/s while paused", () => {
   act(() => setHeader(header()));
   const text = screen.getByRole("status").textContent!;
   expect(text).not.toContain("gen/s");
-  expect(text).toContain("256 × 128");
+  expect(text).toContain("Square · 256 × 128 · Wrap · B3/S23");
+});
+
+test("status bar shows the grid's name and the rule from the frame", () => {
+  render(<StatusBar />);
+  act(() => setHeader(header({ tiling: "triangular-12", rule: "B4/S456", gridWidth: 64, gridHeight: 32 })));
+  expect(screen.getByRole("status").textContent).toContain("Triangular, 12 neighbors · 64 × 32 · Wrap · B4/S456");
 });
 
 test("fixture frame-v1.bin decodes to its known pattern", async () => {

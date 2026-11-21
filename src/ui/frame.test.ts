@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { decodeFrame, decodePattern } from "./frame";
+import type { TilingId, TilingInfo } from "./backend";
+import { decodeFrame, decodePattern, formatRule } from "./frame";
 
 function build(layers: number[][], over: Partial<Record<number, number>> = {}): ArrayBuffer {
   const head = new Uint32Array(16);
@@ -116,4 +117,49 @@ test("decodePattern reads the size and the rows of a hand-built buffer", () => {
   expect(p.width).toBe(33);
   expect(p.height).toBe(2);
   expect(Array.from(p.bits)).toEqual([0b101, 1, 0x80000000, 0]);
+});
+
+const info = (id: TilingId, birth: number, survival: number): TilingInfo => ({
+  id, name: id, neighbors: 8, defaultRule: { text: "", birth, survival }, presets: [], wrapEvenWidth: false, wrapEvenHeight: false,
+});
+const DEFAULTS = [
+  info("square", 0b1000, 0b1100),
+  info("hexagonal", 0b100, 0b101000),
+  info("triangular-12", 0b1110000, 0b110000),
+  info("triangular-3", 0b100, 0b1011),
+];
+
+test("reads the tiling code from flags bits 8-11 and the edge mode from bit 0 of word 10", () => {
+  const { header } = decodeFrame(build([], { 1: 1 | (2 << 8), 10: 1 }), DEFAULTS);
+  expect(header).toMatchObject({ tiling: "triangular-12", edges: "dead", playing: true });
+  expect(decodeFrame(build([], { 1: 3 << 8, 10: 0 }), DEFAULTS).header).toMatchObject({ tiling: "triangular-3", edges: "wrap" });
+  // Rule bits do not disturb the edge mode.
+  expect(decodeFrame(build([], { 10: 0b110 }), DEFAULTS).header.edges).toBe("wrap");
+});
+
+test("rebuilds the rule from word 10 XORed with the grid's default", () => {
+  // No difference: the grid's default rule.
+  expect(decodeFrame(build([], { 1: 1 << 8, 10: 0 }), DEFAULTS).header.rule).toBe("B2/S35");
+  // Square B36/S23: birth bit 6 differs.
+  expect(decodeFrame(build([], { 1: 0, 10: 1 << 7 }), DEFAULTS).header.rule).toBe("B36/S23");
+  // Survival of 12 on the 12-neighbor grid uses commas and the lone-count comma.
+  const survival = (1 << 12) ^ 0b110000;
+  const word = (0b1110000 ^ 0b1110000) | (survival << 14);
+  expect(decodeFrame(build([], { 1: 2 << 8, 10: word >>> 0 }), DEFAULTS).header.rule).toBe("B4,5,6/S12,");
+  // Without the grids' defaults there is no rule to show.
+  expect(decodeFrame(build([])).header.rule).toBe("");
+});
+
+test("formatRule matches the engine's text", () => {
+  expect(formatRule(0b1000, 0b1100)).toBe("B3/S23");
+  expect(formatRule(0b100, 0)).toBe("B2/S");
+  expect(formatRule(1 << 4 | 1 << 10 | 1 << 11, 1 << 5 | 1 << 12)).toBe("B4,10,11/S5,12");
+  expect(formatRule(0b1000, 1 << 10)).toBe("B3/S10,");
+});
+
+test.each(["frame-v1.bin", "frame-v1-layers.bin"])("fixture %s decodes as square B3/S23", async (name) => {
+  const { readFileSync } = await import(/* @vite-ignore */ nodeFs);
+  const b = readFileSync(`fixtures/${name}`);
+  const { header } = decodeFrame(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), DEFAULTS);
+  expect(header).toMatchObject({ tiling: "square", rule: "B3/S23" });
 });

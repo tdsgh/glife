@@ -11,7 +11,7 @@ import { useWindowTitle } from "./menu";
 const header = (dirty: boolean): FrameHeader => ({
   version: 1, playing: false, snapshotVersion: 1, generation: 0, liveCount: 0, gensPerSec: 0,
   gridWidth: 10, gridHeight: 10, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0,
-  canUndo: false, canRedo: false, dirty,
+  canUndo: false, canRedo: false, dirty, tiling: "square", rule: "B3/S23",
 });
 
 function Title() {

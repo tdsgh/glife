@@ -423,6 +423,17 @@ pub fn parse_bench(value: Option<&str>) -> Result<Option<(Tiling, Rule)>, String
     Ok(Some((tiling, rule)))
 }
 
+/// Reads `GLIFE_BENCH_REPORT`: unset, empty or `1`; `1` is valid only with a
+/// `GLIFE_BENCH` benchmark.
+pub fn parse_bench_report(value: Option<&str>, bench: bool) -> Result<bool, String> {
+    match value {
+        None | Some("") => Ok(false),
+        Some("1") if bench => Ok(true),
+        Some("1") => Err("GLIFE_BENCH_REPORT=1 needs GLIFE_BENCH".into()),
+        Some(other) => Err(format!("GLIFE_BENCH_REPORT: expected 1, got {other:?}")),
+    }
+}
+
 /// A seed from the OS: `RandomState` is keyed from OS randomness.
 pub fn os_seed() -> u64 {
     std::collections::hash_map::RandomState::new().build_hasher().finish()
@@ -1083,6 +1094,16 @@ mod tests {
         );
         assert!(parse_bench(Some("octagonal")).is_err());
         assert!(parse_bench(Some("triangular-3:B4/S2")).is_err());
+    }
+
+    #[test]
+    fn bench_report_is_one_and_needs_a_benchmark() {
+        assert_eq!(parse_bench_report(None, true), Ok(false));
+        assert_eq!(parse_bench_report(Some(""), false), Ok(false));
+        assert_eq!(parse_bench_report(Some("1"), true), Ok(true));
+        assert!(parse_bench_report(Some("1"), false).is_err());
+        assert!(parse_bench_report(Some("0"), true).is_err());
+        assert!(parse_bench_report(Some("yes"), true).is_err());
     }
 
     #[test]

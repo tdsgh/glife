@@ -12,7 +12,7 @@ import { handleMenu, MENU_ACTIONS, useMenu, windowTitle } from "./menu";
 const header = (over: Partial<FrameHeader> = {}): FrameHeader => ({
   version: 1, playing: false, snapshotVersion: 1, generation: 0, liveCount: 0, gensPerSec: 0,
   gridWidth: 100, gridHeight: 50, edges: "wrap", x0: 0, y0: 0, w: 0, h: 0, layerCount: 0,
-  canUndo: false, canRedo: false, dirty: false, ...over,
+  canUndo: false, canRedo: false, dirty: false, tiling: "square", rule: "B3/S23", ...over,
 });
 
 let calls: { cmd: string; args: any }[];
@@ -92,7 +92,7 @@ test("focus in a text field sends set_edit_target text, blur sends universe", as
 test("menu state follows the flags and the selection", async () => {
   render(<Menu />);
   await waitFor(() => expect(calls.at(-1)!.cmd).toBe("set_menu_state"));
-  expect(calls.at(-1)!.args).toEqual({ canUndo: true, canRedo: true, hasSelection: false, playing: false });
+  expect(calls.at(-1)!.args).toEqual({ canUndo: true, canRedo: true, hasSelection: false, playing: false, tiling: "square" });
   select();
   await waitFor(() => expect(calls.at(-1)!.args).toMatchObject({ hasSelection: true }));
   act(() => setHeader(header({ playing: true })));

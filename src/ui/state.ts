@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { LAYER_AGE, LAYER_TRAIL } from "./backend";
+import { LAYER_AGE, LAYER_TRAIL, type TilingInfo } from "./backend";
 import type { FrameHeader } from "./frame";
 import { initialEdit, type EditState } from "./edit/tools";
 import { PALETTE_SIZES, PALETTES, type PaletteId, type PaletteSize } from "./color/palettes";
@@ -47,11 +47,13 @@ export interface UiState {
   /** Bumped when a library changes, so the open panel reloads. */
   libraryRev: number;
   newDialog: boolean;
+  /** Every grid with its default rule and presets, fetched once at start; empty until then. */
+  tilings: TilingInfo[];
 }
 
 export const SPEEDS: (number | null)[] = [1, 2, 5, 10, 15, 30, 60, 120, 240, null];
 
-let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings(), edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false };
+let state: UiState = { header: null, speed: 10, density: "25", settings: loadSettings(), edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false, tilings: [] };
 const listeners = new Set<() => void>();
 const fitListeners = new Set<() => void>();
 
@@ -77,6 +79,8 @@ const sameHeader = (a: FrameHeader | null, b: FrameHeader) =>
   a.gridWidth === b.gridWidth &&
   a.gridHeight === b.gridHeight &&
   a.edges === b.edges &&
+  a.tiling === b.tiling &&
+  a.rule === b.rule &&
   a.canUndo === b.canUndo &&
   a.canRedo === b.canRedo &&
   a.dirty === b.dirty;
@@ -91,11 +95,13 @@ export const setFileName = (fileName: string | null) => set({ fileName });
 export const setLibraryOpen = (libraryOpen: boolean) => set({ libraryOpen });
 export const bumpLibrary = () => set({ libraryRev: state.libraryRev + 1 });
 export const setNewDialog = (newDialog: boolean) => set({ newDialog });
+export const setTilings = (tilings: TilingInfo[]) => set({ tilings });
 export const setDensity = (density: string) => set({ density });
 
-export function setSettings(patch: Partial<ViewSettings>) {
+export function setSettings(patch: Partial<ViewSettings>, persist = true) {
   const settings = { ...state.settings, ...patch };
   set({ settings });
+  if (!persist) return;
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
@@ -123,6 +129,6 @@ export function onFit(l: () => void) {
 }
 
 export function resetUiState() {
-  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS }, edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false };
+  state = { header: null, speed: 10, density: "25", settings: { ...DEFAULT_SETTINGS }, edit: initialEdit(), notice: null, fileName: null, libraryOpen: false, libraryRev: 0, newDialog: false, tilings: [] };
   listeners.forEach((l) => l());
 }

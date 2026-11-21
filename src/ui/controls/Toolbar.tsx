@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { clear, librarySave, setEdges, setSpeed as sendSpeed } from "../backend";
-import { bumpLibrary, requestFit, setDensity, setLibraryOpen, setNewDialog, setSpeed, SPEEDS, useUiState } from "../state";
+import { bumpLibrary, requestFit, setDensity, setLibraryOpen, setNewDialog, setNotice, setSpeed, SPEEDS, useUiState } from "../state";
 import { SavePatternDialog } from "../library/SavePatternDialog";
 import { ColorControls } from "../color/ColorControls";
 import { NewUniverseDialog } from "./NewUniverseDialog";
+import { RuleDialog } from "./RuleDialog";
 import { copy, cut, deleteAction, endPlacing, flipH, flipV, newUniverse, paste, randomFill, redo, setPasteMode, setTool, stepOnce, togglePlay, undo } from "./actions";
 import { toggleStyle } from "./toggleStyle";
 
@@ -13,6 +14,7 @@ const column = { display: "flex", flexDirection: "column", gap: 4 } as const;
 export function Toolbar() {
   const { header, speed, density, edit, libraryOpen, newDialog } = useUiState();
   const [saveDialog, setSaveDialog] = useState(false);
+  const [ruleDialog, setRuleDialog] = useState(false);
   const playing = header?.playing ?? false;
   const edges = header?.edges ?? "wrap";
 
@@ -45,9 +47,10 @@ export function Toolbar() {
             ))}
           </select>
         </label>
-        <button onClick={() => void setEdges(edges === "wrap" ? "dead" : "wrap")}>
+        <button onClick={() => setEdges(edges === "wrap" ? "dead" : "wrap").catch((e) => setNotice(String(e)))}>
           Edges: {edges === "wrap" ? "Wrap" : "Dead"}
         </button>
+        <button onClick={() => setRuleDialog(true)} disabled={!header}>Rule…</button>
       </div>
       {divider}
       <div style={column}>
@@ -100,6 +103,7 @@ export function Toolbar() {
       </div>
       {divider}
       <ColorControls />
+      {ruleDialog && <RuleDialog onClose={() => setRuleDialog(false)} />}
       {newDialog && <NewUniverseDialog onClose={() => setNewDialog(false)} />}
       {saveDialog && (
         <SavePatternDialog title="Save to library" fields={{ name: true, comment: true }} onClose={() => setSaveDialog(false)}
