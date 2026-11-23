@@ -243,9 +243,14 @@ every grid, square included.
 | WP3 Engine patterns on grids | `engine` | opus | test | — | Done `6d5e65e` |
 | WP4 Grid commands and frame | `host` | sonnet | test | yes, with WP6 | Done `0d11743` |
 | WP5 Formats, clipboard and libraries | `host` | sonnet | test | yes, with WP6 | Done `d211e5b` |
-| WP6 Grid view and drawing | `ui` | sonnet | human | yes, with WP4–WP5 | Done |
+| WP6 Grid view and drawing | `ui` | sonnet | human | yes, with WP4–WP5 | Done `10ea9a2` |
 | WP7 Placing, selection and libraries in the UI | `ui` | sonnet | human | — | Next |
 | WP8 Docs and rules | `kit:docs-writer` | sonnet | human | — | Not started |
+| Verification | session | — | — | — | Not started |
+
+Status is updated in the commit that finishes each step. A step's own commit
+can't name its hash, so it records `Done`, and the next step's commit adds the
+hash.
 
 Test command for every `test` gate: `cargo test --workspace && npm test`.
 
@@ -585,7 +590,7 @@ On a hexagonal and a 12-neighbor triangular universe, yes or no:
 ## WP8 — Docs and rules
 > `agent: kit:docs-writer` · `model: sonnet` · `gate: human`
 
-Proposes; the session applies after approval.
+Writes the edits in place, uncommitted, for review in the diff.
 
 - `docs/architecture.md`: purpose (four grids, a rule per universe), the
   tiling and rule in the data model and snapshot, frame flags bits 8–11 and

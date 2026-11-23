@@ -1,8 +1,8 @@
 <!-- kit:core/docs/CLAUDE v1 -->
 # docs/ — system documentation rules
 
-Adds to the root `CLAUDE.md` and does not repeat it. The approval gate on this
-folder is in `.claude/rules/kit-docs-gate.md`.
+Adds to the root `CLAUDE.md` and does not repeat it. The review and commit
+gate on this folder is in `.claude/rules/kit-docs-gate.md`.
 
 ## What lives here
 
